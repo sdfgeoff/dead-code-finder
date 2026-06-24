@@ -1,0 +1,14 @@
+{
+  "roots": [{ "path": "pkg", "module": "pkg" }],
+  "entrypoints": ["pkg/main.py"],
+  "rules": {
+    "factoryReturns": [
+      {
+        "function": "pkg.store.query_returning_one",
+        "typeKeyword": "output",
+        "markInputFields": true,
+        "markOutputFields": true
+      }
+    ]
+  }
+}

@@ -70,7 +70,13 @@ pub struct FactoryReturnRule {
     pub function: String,
     pub type_keyword: String,
     #[serde(default)]
+    pub input_type_keyword: Option<String>,
+    #[serde(default)]
     pub return_container: Option<String>,
+    #[serde(default)]
+    pub mark_input_fields: bool,
+    #[serde(default)]
+    pub mark_output_fields: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -234,6 +240,15 @@ fn validate_rules(rules: &RuleConfig) -> Result<(), ConfigError> {
         if factory_return.type_keyword.trim().is_empty() {
             return Err(ConfigError::InvalidRule {
                 message: "factory return typeKeyword must not be empty".to_string(),
+            });
+        }
+        if factory_return
+            .input_type_keyword
+            .as_ref()
+            .is_some_and(|keyword| keyword.trim().is_empty())
+        {
+            return Err(ConfigError::InvalidRule {
+                message: "factory return inputTypeKeyword must not be empty".to_string(),
             });
         }
         if let Some(container) = &factory_return.return_container {

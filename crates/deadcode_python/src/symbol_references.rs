@@ -316,6 +316,7 @@ impl SymbolCollector<'_> {
         {
             self.push_reference(owner, &name, range);
         }
+        self.collect_factory_model_surfaces(owner, call, types);
         self.collect_pydantic_validation_field_references(owner, call, types);
         for (position, arg) in call.arguments.args.iter().enumerate() {
             let concrete_types = self.concrete_argument_types(arg, types);
