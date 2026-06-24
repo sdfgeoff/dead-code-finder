@@ -397,6 +397,16 @@ fn builtin_method_call_type(
     };
     let receiver_type = expr_type(classes, &attribute.value, types)?;
     let receiver_type = non_none_union_member(&receiver_type).unwrap_or(&receiver_type);
+    if attribute.attr.as_str() == "model_dump" {
+        return Some(TypeBinding {
+            base: "dict".to_string(),
+            args: vec![
+                TypeBinding::erased("str".to_string()),
+                TypeBinding::erased("object".to_string()),
+            ],
+            external: false,
+        });
+    }
     if attribute.attr.as_str() == "model_dump_json" {
         return Some(TypeBinding::erased("str".to_string()));
     }

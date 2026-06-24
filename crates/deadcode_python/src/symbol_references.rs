@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use ruff_python_ast as ast;
 use ruff_text_size::Ranged;
 
+use super::symbol_aliases::expand_alias_binding;
 use super::symbol_branch_narrowing::{merge_completed_branch_types, suite_returns};
 use super::symbol_construction::constructed_type_for_call;
 use super::symbol_expr::target_name;
@@ -82,9 +83,10 @@ impl SymbolCollector<'_> {
             }
             ast::Stmt::AnnAssign(assign) => {
                 if let Some(name) = target_name(&assign.target) {
-                    if let Some(type_name) =
+                    if let Some(mut type_name) =
                         type_binding_from_expr(self.module, self.imports, &assign.annotation)
                     {
+                        type_name = expand_alias_binding(&type_name, self.available_values);
                         types.insert(name.to_string(), type_name);
                     }
                 } else {

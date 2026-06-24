@@ -13,6 +13,23 @@ fn model_dump_json_if_expression_is_string() {
 }
 
 #[test]
+fn model_dump_result_is_mapping() {
+    let report = analyze_fixture("model_dump_result_is_mapping");
+
+    assert!(report.diagnostics.is_empty());
+}
+
+#[test]
+fn local_annotation_alias_expands_for_field_chain() {
+    let report = analyze_fixture("local_annotation_alias_expands_for_field_chain");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Box.item".to_string()));
+    assert!(symbols.contains(&"pkg.main.Item.unused".to_string()));
+}
+
+#[test]
 fn date_fromisoformat_result_has_year() {
     let report = analyze_fixture("date_fromisoformat_result_has_year");
 
