@@ -182,6 +182,34 @@ run()
 }
 
 #[test]
+fn external_parameter_annotations_suppress_receiver_diagnostics() {
+    let workspace = test_workspace("external_parameter_annotations_suppress_receiver_diagnostics");
+    let package = workspace.join("pkg");
+    fs::create_dir_all(&package).unwrap();
+    fs::write(
+        package.join("main.py"),
+        r#"
+from external_orm import Session
+
+def run(session: Session):
+    session.execute("select 1")
+
+run(None)
+"#,
+    )
+    .unwrap();
+    let config = loaded_config(
+        &workspace,
+        vec![root(&package, "pkg")],
+        vec!["pkg/main.py".to_string()],
+    );
+
+    let index = index_project(&config).unwrap();
+
+    assert!(unresolved_receiver_diagnostics(&index).is_empty());
+}
+
+#[test]
 fn imported_local_module_member_access_marks_symbol_live() {
     let workspace = test_workspace("imported_local_module_member_access_marks_symbol_live");
     let package = workspace.join("pkg");

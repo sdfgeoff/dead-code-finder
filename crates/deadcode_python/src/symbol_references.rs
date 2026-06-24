@@ -324,6 +324,9 @@ impl SymbolCollector<'_> {
             value => field_read_type(self.classes, value, types),
         };
         if let Some(receiver_type) = receiver_type {
+            if receiver_type.external {
+                return;
+            }
             push_member_reference(
                 self.member_refs,
                 self.locator,
