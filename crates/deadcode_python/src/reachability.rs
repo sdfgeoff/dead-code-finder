@@ -1,10 +1,65 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use deadcode_core::{Finding, SymbolKind};
+use deadcode_core::{Diagnostic, Finding, Severity, SymbolKind};
 
 use crate::symbol_index::{ImportTarget, ModuleIndex, SymbolIndex};
 
 pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
+    let live = compute_live_symbols(index);
+    let mut findings = Vec::new();
+    for module in &index.modules {
+        for symbol in &module.symbols {
+            if symbol.kind == SymbolKind::Module || live.contains(&symbol.qualified_name) {
+                continue;
+            }
+            findings.push(Finding::unused(
+                code_for_kind(&symbol.kind),
+                symbol.qualified_name.clone(),
+                symbol.kind.clone(),
+                symbol.span.clone(),
+            ));
+        }
+    }
+    findings.sort_by(|left, right| {
+        left.span
+            .file
+            .cmp(&right.span.file)
+            .then_with(|| left.span.line.cmp(&right.span.line))
+            .then_with(|| left.symbol.cmp(&right.symbol))
+    });
+    findings
+}
+
+pub fn unresolved_receiver_diagnostics(index: &SymbolIndex) -> Vec<Diagnostic> {
+    let live = compute_live_symbols(index);
+    let mut diagnostics = Vec::new();
+    for module in &index.modules {
+        for unresolved in &module.unresolved_receivers {
+            if !live.contains(&unresolved.from) {
+                continue;
+            }
+            diagnostics.push(Diagnostic {
+                code: "DCF101".to_string(),
+                severity: Severity::Warning,
+                message: format!(
+                    "cannot resolve receiver type for {}.{}",
+                    unresolved.receiver, unresolved.member
+                ),
+                span: unresolved.span.clone(),
+            });
+        }
+    }
+    diagnostics.sort_by(|left, right| {
+        left.span
+            .file
+            .cmp(&right.span.file)
+            .then_with(|| left.span.line.cmp(&right.span.line))
+            .then_with(|| left.message.cmp(&right.message))
+    });
+    diagnostics
+}
+
+fn compute_live_symbols(index: &SymbolIndex) -> HashSet<String> {
     let symbol_modules = symbol_module_map(index);
     let symbol_kinds = symbol_kind_map(index);
     let module_map = module_map(index);
@@ -36,30 +91,19 @@ pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
                 push_live(&target, &mut live, &mut queue);
             }
         }
-    }
 
-    let mut findings = Vec::new();
-    for module in &index.modules {
-        for symbol in &module.symbols {
-            if symbol.kind == SymbolKind::Module || live.contains(&symbol.qualified_name) {
-                continue;
+        for reference in module
+            .member_references
+            .iter()
+            .filter(|reference| reference.from == owner)
+        {
+            if symbol_kinds.contains_key(&reference.target) {
+                push_live(&reference.target, &mut live, &mut queue);
             }
-            findings.push(Finding::unused(
-                code_for_kind(&symbol.kind),
-                symbol.qualified_name.clone(),
-                symbol.kind.clone(),
-                symbol.span.clone(),
-            ));
         }
     }
-    findings.sort_by(|left, right| {
-        left.span
-            .file
-            .cmp(&right.span.file)
-            .then_with(|| left.span.line.cmp(&right.span.line))
-            .then_with(|| left.symbol.cmp(&right.symbol))
-    });
-    findings
+
+    live
 }
 
 fn root_modules(index: &SymbolIndex) -> HashSet<String> {
@@ -286,6 +330,138 @@ if __name__ == "__main__":
 
         assert!(!symbols.contains(&"pkg.script.live".to_string()));
         assert!(symbols.contains(&"pkg.script.dead".to_string()));
+    }
+
+    #[test]
+    fn resolves_method_call_from_constructor_assignment_without_name_matching() {
+        let workspace = test_workspace(
+            "resolves_method_call_from_constructor_assignment_without_name_matching",
+        );
+        let package = workspace.join("pkg");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("main.py"),
+            r#"
+class ExampleEntity:
+    def save(self):
+        pass
+
+class Other:
+    def save(self):
+        pass
+
+def run():
+    entity = ExampleEntity()
+    entity.save()
+
+run()
+"#,
+        )
+        .unwrap();
+        let config = loaded_config(
+            &workspace,
+            vec![root(&package, "pkg")],
+            vec!["pkg/main.py".to_string()],
+        );
+
+        let index = index_project(&config).unwrap();
+        let findings = find_unused_symbols(&index);
+        let symbols = finding_symbols(&findings);
+
+        assert!(!symbols.contains(&"pkg.main.ExampleEntity.save".to_string()));
+        assert!(symbols.contains(&"pkg.main.Other.save".to_string()));
+    }
+
+    #[test]
+    fn resolves_method_call_from_parameter_annotation() {
+        let workspace = test_workspace("resolves_method_call_from_parameter_annotation");
+        let package = workspace.join("pkg");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("main.py"),
+            r#"
+class ExampleEntity:
+    def save(self):
+        pass
+
+def process(entity: ExampleEntity):
+    entity.save()
+
+process(ExampleEntity())
+"#,
+        )
+        .unwrap();
+        let config = loaded_config(
+            &workspace,
+            vec![root(&package, "pkg")],
+            vec!["pkg/main.py".to_string()],
+        );
+
+        let index = index_project(&config).unwrap();
+        let findings = find_unused_symbols(&index);
+        let symbols = finding_symbols(&findings);
+
+        assert!(!symbols.contains(&"pkg.main.ExampleEntity.save".to_string()));
+    }
+
+    #[test]
+    fn emits_unresolved_receiver_diagnostic_for_reachable_code() {
+        let workspace = test_workspace("emits_unresolved_receiver_diagnostic_for_reachable_code");
+        let package = workspace.join("pkg");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("main.py"),
+            r#"
+def run(x):
+    x.save()
+
+run(None)
+"#,
+        )
+        .unwrap();
+        let config = loaded_config(
+            &workspace,
+            vec![root(&package, "pkg")],
+            vec!["pkg/main.py".to_string()],
+        );
+
+        let index = index_project(&config).unwrap();
+        let diagnostics = unresolved_receiver_diagnostics(&index);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "DCF101");
+        assert!(diagnostics[0]
+            .message
+            .contains("cannot resolve receiver type for x.save"));
+    }
+
+    #[test]
+    fn skips_unresolved_receiver_diagnostic_for_unreachable_code() {
+        let workspace = test_workspace("skips_unresolved_receiver_diagnostic_for_unreachable_code");
+        let package = workspace.join("pkg");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("main.py"),
+            r#"
+def live():
+    pass
+
+def dead(x):
+    x.save()
+
+live()
+"#,
+        )
+        .unwrap();
+        let config = loaded_config(
+            &workspace,
+            vec![root(&package, "pkg")],
+            vec!["pkg/main.py".to_string()],
+        );
+
+        let index = index_project(&config).unwrap();
+
+        assert!(unresolved_receiver_diagnostics(&index).is_empty());
     }
 
     fn finding_symbols(findings: &[Finding]) -> Vec<String> {

@@ -7,7 +7,7 @@ pub mod reachability;
 pub mod symbol_index;
 
 use config::{load_project_config, ConfigError};
-use reachability::find_unused_symbols;
+use reachability::{find_unused_symbols, unresolved_receiver_diagnostics};
 use symbol_index::{index_project, SymbolIndexError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,11 +44,13 @@ pub fn analyze_project(options: &AnalyzeOptions) -> Result<AnalysisReport, Analy
     let config = load_project_config(&options.config_path).map_err(AnalyzeError::Config)?;
     let index = index_project(&config).map_err(AnalyzeError::SymbolIndex)?;
     let findings = find_unused_symbols(&index);
-    let diagnostics = index
+    let unresolved_diagnostics = unresolved_receiver_diagnostics(&index);
+    let mut diagnostics = index
         .parse_diagnostics
         .into_iter()
         .map(|diagnostic| diagnostic.into_core_diagnostic())
-        .collect();
+        .collect::<Vec<_>>();
+    diagnostics.extend(unresolved_diagnostics);
     Ok(AnalysisReport {
         findings,
         diagnostics,
