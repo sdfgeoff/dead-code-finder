@@ -8,6 +8,7 @@ pub enum Severity {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolKind {
+    Module,
     Function,
     Class,
     Method,

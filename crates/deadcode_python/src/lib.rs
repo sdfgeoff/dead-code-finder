@@ -3,8 +3,10 @@
 use deadcode_core::AnalysisReport;
 
 pub mod config;
+pub mod symbol_index;
 
 use config::{load_project_config, ConfigError};
+use symbol_index::{index_project, SymbolIndexError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnalyzeOptions {
@@ -22,12 +24,14 @@ impl AnalyzeOptions {
 #[derive(Debug)]
 pub enum AnalyzeError {
     Config(ConfigError),
+    SymbolIndex(SymbolIndexError),
 }
 
 impl std::fmt::Display for AnalyzeError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Config(error) => write!(formatter, "{error}"),
+            Self::SymbolIndex(error) => write!(formatter, "{error}"),
         }
     }
 }
@@ -35,8 +39,17 @@ impl std::fmt::Display for AnalyzeError {
 impl std::error::Error for AnalyzeError {}
 
 pub fn analyze_project(options: &AnalyzeOptions) -> Result<AnalysisReport, AnalyzeError> {
-    let _config = load_project_config(&options.config_path).map_err(AnalyzeError::Config)?;
-    Ok(AnalysisReport::default())
+    let config = load_project_config(&options.config_path).map_err(AnalyzeError::Config)?;
+    let index = index_project(&config).map_err(AnalyzeError::SymbolIndex)?;
+    let diagnostics = index
+        .parse_diagnostics
+        .into_iter()
+        .map(|diagnostic| diagnostic.into_core_diagnostic())
+        .collect();
+    Ok(AnalysisReport {
+        findings: Vec::new(),
+        diagnostics,
+    })
 }
 
 #[cfg(test)]
@@ -47,6 +60,7 @@ mod tests {
     fn scaffold_analysis_returns_clean_report() {
         let workspace = test_workspace("scaffold_analysis_returns_clean_report");
         std::fs::create_dir_all(workspace.join("pkg")).unwrap();
+        std::fs::write(workspace.join("pkg/__init__.py"), "").unwrap();
         std::fs::write(
             workspace.join("dead-code-finder.json"),
             r#"{"roots":[{"path":"pkg","module":"pkg"}]}"#,
