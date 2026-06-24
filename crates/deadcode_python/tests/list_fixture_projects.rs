@@ -55,6 +55,16 @@ fn branch_assignment_merge_after_early_return() {
 }
 
 #[test]
+fn branch_assignment_merge_ignores_raise() {
+    let report = analyze_fixture("branch_assignment_merge_ignores_raise");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Result.values".to_string()));
+    assert!(symbols.contains(&"pkg.main.Result.unused".to_string()));
+}
+
+#[test]
 fn max_call_preserves_iterable_item_type() {
     let report = analyze_fixture("max_call_preserves_iterable_item_type");
     let symbols = finding_symbols(&report);

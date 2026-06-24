@@ -210,7 +210,7 @@ fn is_none_type(type_name: &str) -> bool {
 
 pub(super) fn suite_returns(body: &[ast::Stmt]) -> bool {
     body.iter()
-        .any(|statement| matches!(statement, ast::Stmt::Return(_)))
+        .any(|statement| matches!(statement, ast::Stmt::Return(_) | ast::Stmt::Raise(_)))
 }
 
 pub(super) fn merge_completed_branch_types(
