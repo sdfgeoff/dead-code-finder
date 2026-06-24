@@ -64,6 +64,8 @@ mod symbol_pydantic;
 mod symbol_references;
 #[path = "symbol_rules.rs"]
 mod symbol_rules;
+#[path = "symbol_statement_flow.rs"]
+mod symbol_statement_flow;
 #[path = "symbol_typeflow.rs"]
 mod symbol_typeflow;
 #[path = "symbol_types.rs"]

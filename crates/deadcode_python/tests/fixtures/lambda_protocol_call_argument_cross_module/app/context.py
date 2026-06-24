@@ -1,8 +1,10 @@
-class ExampleContext:
-    resource_id: int
+from pydantic import BaseModel, ConfigDict
 
-    def __init__(self, resource_id: int) -> None:
-        self.resource_id = resource_id
+
+class ExampleContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resource_id: int
 
     def to_context_prompt(self) -> str:
         return f"resource_id={self.resource_id}"

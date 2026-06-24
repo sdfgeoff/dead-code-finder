@@ -37,6 +37,20 @@ fn generator_expression_references_are_traversed() {
     assert!(symbols.contains(&"pkg.main.dead".to_string()));
 }
 
+#[test]
+fn async_statements_traverse_references() {
+    let report = analyze_fixture("async_statements_traverse_references");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.ExampleContext.to_context_prompt".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Client.send".to_string()));
+    assert!(symbols.contains(&"pkg.main.Client.__aenter__".to_string()));
+    assert!(symbols.contains(&"pkg.main.Client.__aexit__".to_string()));
+    assert!(symbols.contains(&"pkg.main.UnusedContext.to_context_prompt".to_string()));
+    assert!(symbols.contains(&"pkg.main.UnusedClient.send".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))

@@ -8,7 +8,7 @@ use super::symbol_branch_narrowing::{merge_completed_branch_types, suite_returns
 use super::symbol_construction::constructed_type_for_call;
 use super::symbol_expr::target_name;
 use super::symbol_imports::{collect_import, collect_import_from};
-use super::symbol_iteration::{bind_collection_unpack_target, bind_iteration_target};
+use super::symbol_iteration::bind_collection_unpack_target;
 use super::symbol_members::push_member_reference;
 use super::symbol_rules::{callable_argument_references, callable_identity};
 use super::symbol_types::type_binding_from_expr;
@@ -141,37 +141,10 @@ impl SymbolCollector<'_> {
                 merge_completed_branch_types(types, completed_branches);
             }
             ast::Stmt::With(with_stmt) => {
-                for item in &with_stmt.items {
-                    self.collect_expr_references(owner, &item.context_expr, types);
-                    self.collect_context_manager_references(owner, &item.context_expr, types);
-                    if let Some(optional_vars) = &item.optional_vars {
-                        self.collect_assignment_target(owner, optional_vars, types);
-                        self.bind_context_manager_optional_var(
-                            optional_vars,
-                            &item.context_expr,
-                            types,
-                        );
-                    }
-                }
-                for nested in &with_stmt.body {
-                    self.collect_statement_references(owner, nested, types);
-                }
+                self.collect_with_statement_references(owner, with_stmt, types);
             }
             ast::Stmt::For(for_stmt) => {
-                self.collect_expr_references(owner, &for_stmt.iter, types);
-                self.collect_assignment_target(owner, &for_stmt.target, types);
-                let item_type = self.iteration_item_type(&for_stmt.iter, types);
-                if let (Some(name), Some(item_type)) = (target_name(&for_stmt.target), item_type) {
-                    types.insert(name.to_string(), item_type);
-                } else if let Some(item_type) = self.iteration_item_type(&for_stmt.iter, types) {
-                    bind_iteration_target(&for_stmt.target, &item_type, types);
-                }
-                for nested in &for_stmt.body {
-                    self.collect_statement_references(owner, nested, types);
-                }
-                for nested in &for_stmt.orelse {
-                    self.collect_statement_references(owner, nested, types);
-                }
+                self.collect_for_statement_references(owner, for_stmt, types);
             }
             ast::Stmt::While(while_stmt) => {
                 self.collect_expr_references(owner, &while_stmt.test, types);
@@ -254,6 +227,14 @@ impl SymbolCollector<'_> {
             }
             ast::Expr::Await(await_expr) => {
                 self.collect_expr_references(owner, &await_expr.value, types);
+            }
+            ast::Expr::Yield(yield_expr) => {
+                if let Some(value) = &yield_expr.value {
+                    self.collect_expr_references(owner, value, types);
+                }
+            }
+            ast::Expr::YieldFrom(yield_from) => {
+                self.collect_expr_references(owner, &yield_from.value, types);
             }
             ast::Expr::Starred(starred) => {
                 self.collect_expr_references(owner, &starred.value, types);
