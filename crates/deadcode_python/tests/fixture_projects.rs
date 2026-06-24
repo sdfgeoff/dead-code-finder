@@ -222,6 +222,14 @@ fn string_join_result_is_string() {
 }
 
 #[test]
+fn datetime_optional_arithmetic_resolves_methods() {
+    let report = analyze_fixture("datetime_optional_arithmetic_resolves_methods");
+
+    assert!(report.findings.is_empty());
+    assert!(report.diagnostics.is_empty());
+}
+
+#[test]
 fn awaited_mapping_subscript_resolves_generic_item_fields() {
     let report = analyze_fixture("awaited_mapping_subscript_resolves_generic_item_fields");
     let symbols = finding_symbols(&report);

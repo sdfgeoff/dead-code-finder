@@ -9,6 +9,24 @@ use super::SymbolCollector;
 use crate::symbol_index::{FunctionSignature, TypeBinding};
 
 impl SymbolCollector<'_> {
+    pub(super) fn assignment_value_binding(
+        &self,
+        value: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        self.local_call_return_binding(value, types)
+            .or_else(|| self.known_call_result_binding(value))
+            .or_else(|| constructor_binding(self.module, self.imports, self.rules, value))
+            .or_else(|| expr_type(self.available_classes, value, types))
+            .or_else(|| self.local_call_field_read_binding(value, types))
+            .or_else(|| self.cast_or_if_expression_binding(value, types))
+            .or_else(|| self.bool_or_expression_binding(value, types))
+            .or_else(|| self.binop_expression_binding(value, types))
+            .or_else(|| self.fluent_self_call_binding(value, types))
+            .or_else(|| self.external_call_result_binding(value, types))
+            .or_else(|| type_binding_from_expr(self.module, self.imports, value))
+    }
+
     pub(super) fn external_call_result_binding(
         &self,
         expr: &ast::Expr,
@@ -32,6 +50,44 @@ impl SymbolCollector<'_> {
             args: Vec::new(),
             external: true,
         })
+    }
+
+    pub(super) fn known_call_result_binding(&self, expr: &ast::Expr) -> Option<TypeBinding> {
+        let ast::Expr::Call(call) = expr else {
+            return None;
+        };
+        let callable = callable_identity(self.module, self.imports, &call.func)?;
+        let base = match callable.as_str() {
+            "datetime.datetime.now"
+            | "datetime.datetime.utcnow"
+            | "datetime.datetime.fromtimestamp"
+            | "datetime.datetime.strptime"
+            | "datetime.datetime.combine" => "datetime.datetime",
+            "datetime.date.today" | "datetime.date.fromtimestamp" => "datetime.date",
+            _ => return None,
+        };
+        Some(TypeBinding {
+            base: base.to_string(),
+            args: Vec::new(),
+            external: true,
+        })
+    }
+
+    pub(super) fn binop_expression_binding(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        let ast::Expr::BinOp(bin_op) = expr else {
+            return None;
+        };
+        let left = self.expression_flow_binding(&bin_op.left, types)?;
+        let right = self.expression_flow_binding(&bin_op.right, types)?;
+        match bin_op.op {
+            ast::Operator::Add if is_datetime_like(&left) && is_timedelta(&right) => Some(left),
+            ast::Operator::Sub if is_datetime_like(&left) && is_timedelta(&right) => Some(left),
+            _ => None,
+        }
     }
 
     pub(super) fn local_call_return_binding(
@@ -191,8 +247,10 @@ impl SymbolCollector<'_> {
     ) -> Option<TypeBinding> {
         self.cast_or_if_expression_binding(expr, types)
             .or_else(|| self.bool_or_expression_binding(expr, types))
+            .or_else(|| self.binop_expression_binding(expr, types))
             .or_else(|| self.local_call_return_binding(expr, types))
             .or_else(|| self.local_call_field_read_binding(expr, types))
+            .or_else(|| self.known_call_result_binding(expr))
             .or_else(|| constructor_binding(self.module, self.imports, self.rules, expr))
             .or_else(|| expr_type(self.available_classes, expr, types))
     }
@@ -316,25 +374,23 @@ fn is_optional_type(binding: &TypeBinding) -> bool {
 }
 
 fn optional_value_branch_type(optional: &TypeBinding, value: &TypeBinding) -> Option<TypeBinding> {
-    if !is_optional_type(optional) {
-        return None;
-    }
-    optional
-        .args
-        .first()
+    optional_inner_type(optional)
         .is_some_and(|inner| inner.base == value.base && inner.args == value.args)
         .then(|| optional.clone())
 }
 
 fn coalesced_optional_type(optional: &TypeBinding, fallback: &TypeBinding) -> Option<TypeBinding> {
-    if !is_optional_type(optional) {
-        return None;
-    }
-    optional
-        .args
-        .first()
+    optional_inner_type(optional)
         .is_some_and(|inner| inner.base == fallback.base && inner.args == fallback.args)
         .then(|| fallback.clone())
+}
+
+fn is_datetime_like(binding: &TypeBinding) -> bool {
+    matches!(binding.base.as_str(), "datetime.datetime" | "datetime.date")
+}
+
+fn is_timedelta(binding: &TypeBinding) -> bool {
+    binding.base == "datetime.timedelta"
 }
 
 fn optional_list_with_empty_list_type(binding: &TypeBinding) -> Option<TypeBinding> {
