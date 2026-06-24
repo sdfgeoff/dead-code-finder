@@ -270,9 +270,12 @@ fn is_collection_type(type_name: &str) -> bool {
             | "typing.Sequence"
             | "collections.abc.Sequence"
             | "typing.Union"
+            | "typing.Optional"
+            | "Optional"
             | "types.UnionType"
     ) || type_name.ends_with(".Sequence")
         || type_name.ends_with(".Union")
+        || type_name.ends_with(".Optional")
 }
 
 fn is_external_model_validation_call(method: &str, call: &ast::ExprCall) -> bool {

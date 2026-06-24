@@ -1,4 +1,4 @@
-from typing import Annotated, Generic, Literal, TypeVar, Union
+from typing import Annotated, Generic, Literal, Optional, TypeVar, Union
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -33,9 +33,14 @@ BoundaryPayload = TypeAliasType(
 )
 
 
+class OptionalNested(BaseModel):
+    enabled: bool
+
+
 class ResponseModel(BaseModel, Generic[T]):
     item: T
     total: int
+    optional_nested: Optional[OptionalNested] = None
 
 
 class NotExposed(BaseModel):

@@ -15,6 +15,7 @@ fn decorator_boundary_models_mark_nested_pydantic_fields_live() {
     assert!(!symbols.contains(&"api.main.FirstVariant.value".to_string()));
     assert!(!symbols.contains(&"api.main.SecondVariant.kind".to_string()));
     assert!(!symbols.contains(&"api.main.SecondVariant.label".to_string()));
+    assert!(!symbols.contains(&"api.main.OptionalNested.enabled".to_string()));
     assert!(symbols.contains(&"api.main.NotExposed.field".to_string()));
 }
 
