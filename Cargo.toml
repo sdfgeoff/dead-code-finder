@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "crates/deadcode_core",
+    "crates/deadcode_python",
+    "crates/deadcode_cli",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://example.invalid/dead-code-finder"
+rust-version = "1.80"
