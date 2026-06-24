@@ -17,7 +17,14 @@ pub struct SymbolIndex {
     pub modules: Vec<ModuleIndex>,
     pub parse_diagnostics: Vec<ParseDiagnostic>,
     pub include_tests: bool,
+    pub route_globs: Vec<ResolvedRouteGlob>,
     known_modules: HashSet<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedRouteGlob {
+    pub when_function_called: String,
+    pub modules: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -238,10 +245,42 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             .cmp(&right.module)
             .then_with(|| left.file.cmp(&right.file))
     });
+    index.route_globs = resolve_route_globs(config, &index.modules);
 
     index.known_modules.clear();
 
     Ok(index)
+}
+
+fn resolve_route_globs(
+    config: &LoadedProjectConfig,
+    modules: &[ModuleIndex],
+) -> Vec<ResolvedRouteGlob> {
+    config
+        .rules
+        .route_globs
+        .iter()
+        .map(|rule| {
+            let modules = modules
+                .iter()
+                .filter(|module| route_glob_matches(&config.project_dir, &rule.glob, &module.file))
+                .map(|module| module.module.clone())
+                .collect();
+            ResolvedRouteGlob {
+                when_function_called: rule.when_function_called.clone(),
+                modules,
+            }
+        })
+        .collect()
+}
+
+fn route_glob_matches(project_dir: &Path, pattern: &str, file: &Path) -> bool {
+    let relative = file.strip_prefix(project_dir).unwrap_or(file);
+    let relative = relative.to_string_lossy().replace('\\', "/");
+    if let Some((prefix, suffix)) = pattern.split_once("**") {
+        return relative.starts_with(prefix) && relative.ends_with(suffix.trim_start_matches('/'));
+    }
+    relative == pattern
 }
 
 fn collect_python_files(path: &Path, files: &mut Vec<PathBuf>) -> Result<(), SymbolIndexError> {

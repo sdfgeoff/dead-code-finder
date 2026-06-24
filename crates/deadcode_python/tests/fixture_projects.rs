@@ -126,6 +126,56 @@ app.include_router(router)
 }
 
 #[test]
+fn route_glob_rules_activate_dynamic_route_modules() {
+    let project = FixtureProject::new("route_glob_rules_activate_dynamic_route_modules");
+    project.write(
+        "api/main.py",
+        "from api.loader import load_routes\n\nload_routes()\n",
+    );
+    project.write("api/loader.py", "def load_routes():\n    pass\n");
+    project.write(
+        "api/entities/route.py",
+        r#"
+from fastapi import APIRouter
+
+router = APIRouter()
+
+@router.get("/entities")
+def list_users():
+    pass
+"#,
+    );
+    project.write(
+        "dead-code-finder.json",
+        r#"{
+            "roots": [{"path": "api", "module": "api"}],
+            "entrypoints": ["api/main.py"],
+            "rules": {
+                "constructors": [
+                    {"match": "fastapi.APIRouter", "producesType": "fastapi.APIRouter"}
+                ],
+                "decorators": [{
+                    "receiverType": "fastapi.APIRouter",
+                    "methods": ["get"],
+                    "effect": "registerDecoratedFunction"
+                }],
+                "routeGlobs": [{
+                    "whenFunctionCalled": "api.loader.load_routes",
+                    "glob": "api/**/route.py",
+                    "export": "router",
+                    "effect": "includeRouter"
+                }]
+            }
+        }"#,
+    );
+
+    let report = project.analyze();
+    let symbols = finding_symbols(&report);
+
+    assert!(!symbols.contains(&"api.entities.route.list_users".to_string()));
+}
+
+#[test]
 fn scripts_inheritance_generics_and_unresolved_receivers_are_reported() {
     let project = FixtureProject::new("scripts_inheritance_generics_and_unresolved_receivers");
     project.write(

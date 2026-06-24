@@ -45,6 +45,8 @@ pub struct RuleConfig {
     pub decorators: Vec<DecoratorRule>,
     #[serde(default)]
     pub calls: Vec<CallRule>,
+    #[serde(default)]
+    pub route_globs: Vec<RouteGlobRule>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -74,6 +76,15 @@ pub struct CallRule {
     pub method: Option<String>,
     pub effect: String,
     pub argument: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteGlobRule {
+    pub when_function_called: String,
+    pub glob: String,
+    pub export: String,
+    pub effect: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -215,6 +226,28 @@ fn validate_rules(rules: &RuleConfig) -> Result<(), ConfigError> {
         ) {
             return Err(ConfigError::InvalidRule {
                 message: format!("unsupported call effect {}", call.effect),
+            });
+        }
+    }
+    for route_glob in &rules.route_globs {
+        if route_glob.when_function_called.trim().is_empty() {
+            return Err(ConfigError::InvalidRule {
+                message: "route glob whenFunctionCalled must not be empty".to_string(),
+            });
+        }
+        if route_glob.glob.trim().is_empty() {
+            return Err(ConfigError::InvalidRule {
+                message: "route glob glob must not be empty".to_string(),
+            });
+        }
+        if route_glob.export.trim().is_empty() {
+            return Err(ConfigError::InvalidRule {
+                message: "route glob export must not be empty".to_string(),
+            });
+        }
+        if route_glob.effect != "includeRouter" {
+            return Err(ConfigError::InvalidRule {
+                message: format!("unsupported route glob effect {}", route_glob.effect),
             });
         }
     }

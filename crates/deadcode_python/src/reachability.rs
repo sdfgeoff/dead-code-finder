@@ -174,6 +174,13 @@ fn compute_live_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<Strin
         {
             if let Some(target) = resolve_reference(module, &reference.name, &symbol_kinds) {
                 push_live(&target, &mut live, &mut queue);
+                for route_glob in &index.route_globs {
+                    if route_glob.when_function_called == target {
+                        for module in &route_glob.modules {
+                            push_live(module, &mut live, &mut queue);
+                        }
+                    }
+                }
             }
         }
 
