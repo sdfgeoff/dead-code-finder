@@ -139,7 +139,40 @@ fn class_fields(
             fields.push(field);
         }
     }
+    for field in property_fields(module, imports, class_def, type_params) {
+        if !fields.iter().any(|existing| existing.name == field.name) {
+            fields.push(field);
+        }
+    }
     fields
+}
+
+fn property_fields(
+    module: &str,
+    imports: &[ResolvedImport],
+    class_def: &ast::StmtClassDef,
+    type_params: &[String],
+) -> Vec<ClassFieldInfo> {
+    class_def
+        .body
+        .iter()
+        .filter_map(|statement| {
+            let ast::Stmt::FunctionDef(function) = statement else {
+                return None;
+            };
+            if !function.decorator_list.iter().any(
+                |decorator| matches!(&decorator.expression, ast::Expr::Name(name) if name.id.as_str() == "property"),
+            ) {
+                return None;
+            }
+            let returns = function.returns.as_ref()?;
+            let annotation = field_annotation(module, imports, returns, type_params)?;
+            Some(ClassFieldInfo {
+                name: function.name.as_str().to_string(),
+                annotation,
+            })
+        })
+        .collect()
 }
 
 fn init_self_fields(

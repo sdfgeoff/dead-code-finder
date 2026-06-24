@@ -98,6 +98,7 @@ pub(super) fn expr_type(
             })
         }
         ast::Expr::Dict(dict) => dict_type(classes, &dict.items, types),
+        ast::Expr::DictComp(dict_comp) => dict_comprehension_type(classes, dict_comp, types),
         ast::Expr::StringLiteral(_) => Some(TypeBinding {
             base: "str".to_string(),
             args: Vec::new(),
@@ -317,6 +318,32 @@ fn dict_type(
     Some(TypeBinding {
         base: "dict".to_string(),
         args: vec![key_type?, value_type?],
+        external: false,
+    })
+}
+
+fn dict_comprehension_type(
+    classes: &[ClassInfo],
+    dict_comp: &ast::ExprDictComp,
+    types: &HashMap<String, TypeBinding>,
+) -> Option<TypeBinding> {
+    let [generator] = dict_comp.generators.as_slice() else {
+        return None;
+    };
+    let ast::Expr::Name(target) = &generator.target else {
+        return None;
+    };
+    let item_type = iterable_item_type(classes, &generator.iter, types)?;
+    let mut scoped_types = types.clone();
+    scoped_types.insert(target.id.as_str().to_string(), item_type);
+    let key_type = expr_type(classes, &dict_comp.key, &scoped_types)
+        .unwrap_or_else(|| TypeBinding::erased("object".to_string()));
+    Some(TypeBinding {
+        base: "dict".to_string(),
+        args: vec![
+            key_type,
+            expr_type(classes, &dict_comp.value, &scoped_types)?,
+        ],
         external: false,
     })
 }

@@ -170,6 +170,27 @@ fn dict_items_iteration_resolves_value_fields() {
 }
 
 #[test]
+fn dict_comprehension_resolves_value_fields() {
+    let report = analyze_fixture("dict_comprehension_resolves_value_fields");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Sheet.label".to_string()));
+    assert!(symbols.contains(&"pkg.main.Sheet.unused".to_string()));
+}
+
+#[test]
+fn property_methods_resolve_as_fields() {
+    let report = analyze_fixture("property_methods_resolve_as_fields");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Workbook.worksheets".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Sheet.label".to_string()));
+    assert!(symbols.contains(&"pkg.main.Sheet.unused".to_string()));
+}
+
+#[test]
 fn callable_return_async_iterator_resolves_item_fields() {
     let report = analyze_fixture("callable_return_async_iterator_resolves_item_fields");
     let symbols = finding_symbols(&report);
