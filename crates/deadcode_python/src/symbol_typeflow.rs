@@ -80,6 +80,22 @@ impl SymbolCollector<'_> {
             .or_else(|| self.if_expression_binding(expr, types))
     }
 
+    pub(super) fn bool_or_expression_binding(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        let ast::Expr::BoolOp(bool_op) = expr else {
+            return None;
+        };
+        if bool_op.op != ast::BoolOp::Or || bool_op.values.len() != 2 {
+            return None;
+        }
+        let left = self.expression_flow_binding(&bool_op.values[0], types)?;
+        let right = self.expression_flow_binding(&bool_op.values[1], types)?;
+        coalesced_optional_type(&left, &right).or_else(|| coalesced_optional_type(&right, &left))
+    }
+
     pub(super) fn fluent_self_call_binding(
         &self,
         expr: &ast::Expr,
@@ -165,6 +181,7 @@ impl SymbolCollector<'_> {
         types: &HashMap<String, TypeBinding>,
     ) -> Option<TypeBinding> {
         self.cast_or_if_expression_binding(expr, types)
+            .or_else(|| self.bool_or_expression_binding(expr, types))
             .or_else(|| self.local_call_return_binding(expr, types))
             .or_else(|| self.local_call_field_read_binding(expr, types))
             .or_else(|| constructor_binding(self.module, self.imports, self.rules, expr))
@@ -298,6 +315,17 @@ fn optional_value_branch_type(optional: &TypeBinding, value: &TypeBinding) -> Op
         .first()
         .is_some_and(|inner| inner.base == value.base && inner.args == value.args)
         .then(|| optional.clone())
+}
+
+fn coalesced_optional_type(optional: &TypeBinding, fallback: &TypeBinding) -> Option<TypeBinding> {
+    if !is_optional_type(optional) {
+        return None;
+    }
+    optional
+        .args
+        .first()
+        .is_some_and(|inner| inner.base == fallback.base && inner.args == fallback.args)
+        .then(|| fallback.clone())
 }
 
 fn is_none_type(binding: &TypeBinding) -> bool {

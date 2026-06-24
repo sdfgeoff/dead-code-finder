@@ -48,6 +48,7 @@ impl SymbolCollector<'_> {
                         .or_else(|| self.local_call_return_binding(&assign.value, types))
                         .or_else(|| self.local_call_field_read_binding(&assign.value, types))
                         .or_else(|| self.cast_or_if_expression_binding(&assign.value, types))
+                        .or_else(|| self.bool_or_expression_binding(&assign.value, types))
                         .or_else(|| self.fluent_self_call_binding(&assign.value, types))
                         .or_else(|| self.external_call_result_binding(&assign.value, types))
                         .or_else(|| {
