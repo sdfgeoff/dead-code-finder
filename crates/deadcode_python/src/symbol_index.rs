@@ -17,6 +17,7 @@ pub struct SymbolIndex {
     pub modules: Vec<ModuleIndex>,
     pub parse_diagnostics: Vec<ParseDiagnostic>,
     pub include_tests: bool,
+    pub include_weak: bool,
     pub route_globs: Vec<ResolvedRouteGlob>,
     known_modules: HashSet<String>,
 }
@@ -41,6 +42,7 @@ pub struct ModuleIndex {
     pub unresolved_receivers: Vec<UnresolvedReceiver>,
     pub unsupported_expansions: Vec<UnsupportedExpansion>,
     pub is_entrypoint: bool,
+    pub is_weak_entrypoint: bool,
     pub is_test: bool,
     pub test_roots: Vec<String>,
 }
@@ -206,6 +208,7 @@ impl std::error::Error for SymbolIndexError {}
 pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, SymbolIndexError> {
     let mut index = SymbolIndex::default();
     index.include_tests = config.include_tests;
+    index.include_weak = !config.weak_entrypoints.is_empty();
 
     for root in &config.roots {
         let mut files = Vec::new();
@@ -231,6 +234,7 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
                 &index.known_modules,
                 &config.rules,
                 is_configured_entrypoint(config, &file),
+                is_configured_weak_entrypoint(config, &file),
                 is_test_file(config, &file),
             )?;
             index
@@ -326,6 +330,7 @@ fn index_module(
     known_modules: &HashSet<String>,
     rules: &RuleConfig,
     is_configured_entrypoint: bool,
+    is_configured_weak_entrypoint: bool,
     is_test: bool,
 ) -> Result<IndexedModuleResult, SymbolIndexError> {
     let source = fs::read_to_string(file).map_err(|source| SymbolIndexError::ReadFile {
@@ -408,7 +413,9 @@ fn index_module(
             member_references,
             unresolved_receivers,
             unsupported_expansions,
-            is_entrypoint: is_configured_entrypoint || has_main_entrypoint,
+            is_entrypoint: is_configured_entrypoint
+                || (has_main_entrypoint && !is_configured_weak_entrypoint),
+            is_weak_entrypoint: is_configured_weak_entrypoint,
             is_test,
             test_roots,
         },
@@ -433,6 +440,42 @@ fn is_configured_entrypoint(config: &LoadedProjectConfig, file: &Path) -> bool {
         let configured = config.project_dir.join(entrypoint);
         configured == file
     })
+}
+
+fn is_configured_weak_entrypoint(config: &LoadedProjectConfig, file: &Path) -> bool {
+    config
+        .weak_entrypoints
+        .iter()
+        .any(|entrypoint| configured_path_matches(config, entrypoint, file))
+}
+
+fn configured_path_matches(config: &LoadedProjectConfig, pattern: &str, file: &Path) -> bool {
+    if !pattern.contains('*') {
+        return config.project_dir.join(pattern) == file;
+    }
+    let relative = file.strip_prefix(&config.project_dir).unwrap_or(file);
+    let relative = relative.to_string_lossy().replace('\\', "/");
+    glob_pattern_matches(pattern, &relative)
+}
+
+fn glob_pattern_matches(pattern: &str, relative: &str) -> bool {
+    if pattern == "**/*.py" {
+        return relative.ends_with(".py");
+    }
+    if let Some((prefix, suffix)) = pattern.split_once("**") {
+        if !relative.starts_with(prefix) {
+            return false;
+        }
+        let suffix = suffix.trim_start_matches('/');
+        if suffix.contains('*') {
+            return glob_pattern_matches(suffix, &relative[prefix.len()..]);
+        }
+        return relative.ends_with(suffix);
+    }
+    if let Some((prefix, suffix)) = pattern.split_once('*') {
+        return relative.starts_with(prefix) && relative.ends_with(suffix);
+    }
+    relative == pattern
 }
 
 fn is_test_file(config: &LoadedProjectConfig, file: &Path) -> bool {

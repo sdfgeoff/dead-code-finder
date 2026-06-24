@@ -699,6 +699,7 @@ live()
             project_dir: workspace.to_path_buf(),
             roots,
             entrypoints,
+            weak_entrypoints: Vec::new(),
             include_tests: false,
             test_patterns: Vec::new(),
             rules: RuleConfig::default(),

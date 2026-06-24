@@ -87,6 +87,7 @@ impl SymbolCollector<'_> {
             ast::Stmt::With(with_stmt) => {
                 for item in &with_stmt.items {
                     self.collect_expr_references(owner, &item.context_expr, types);
+                    self.collect_context_manager_references(owner, &item.context_expr, types);
                     if let Some(optional_vars) = &item.optional_vars {
                         self.collect_assignment_target(owner, optional_vars, types);
                     }
@@ -269,6 +270,30 @@ impl SymbolCollector<'_> {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn collect_context_manager_references(
+        &mut self,
+        owner: &str,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) {
+        let Some(binding) = constructor_binding(self.module, self.imports, self.rules, expr)
+            .or_else(|| field_read_type(self.classes, expr, types))
+        else {
+            return;
+        };
+        for method in ["__enter__", "__exit__"] {
+            push_member_reference(
+                self.member_refs,
+                self.locator,
+                self.file,
+                owner,
+                format!("{}.{}", binding.base, method),
+                AccessKind::Call,
+                expr.range(),
+            );
         }
     }
 

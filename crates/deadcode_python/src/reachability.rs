@@ -10,6 +10,10 @@ pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
         .include_tests
         .then(|| compute_live_symbols(index, RootSet::Test))
         .unwrap_or_default();
+    let weak_live = index
+        .include_weak
+        .then(|| compute_live_symbols(index, RootSet::Weak))
+        .unwrap_or_default();
     let mut findings = Vec::new();
     for module in &index.modules {
         for symbol in &module.symbols {
@@ -27,10 +31,13 @@ pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
                     symbol.span.clone(),
                 ));
             } else if !live.contains(&symbol.qualified_name) {
-                let reachable_from = test_live
-                    .contains(&symbol.qualified_name)
-                    .then(|| vec!["test".to_string()])
-                    .unwrap_or_default();
+                let mut reachable_from = Vec::new();
+                if test_live.contains(&symbol.qualified_name) {
+                    reachable_from.push("test".to_string());
+                }
+                if weak_live.contains(&symbol.qualified_name) {
+                    reachable_from.push("weak".to_string());
+                }
                 findings.push(
                     Finding::unused(
                         code_for_kind(&symbol.kind),
@@ -115,6 +122,7 @@ pub fn unsupported_expansion_diagnostics(index: &SymbolIndex) -> Vec<Diagnostic>
 enum RootSet {
     Main,
     Test,
+    Weak,
 }
 
 fn compute_live_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<String> {
@@ -217,6 +225,12 @@ fn root_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<String> {
             .modules
             .iter()
             .flat_map(|module| module.test_roots.iter().cloned())
+            .collect(),
+        RootSet::Weak => index
+            .modules
+            .iter()
+            .filter(|module| module.is_weak_entrypoint)
+            .map(|module| module.module.clone())
             .collect(),
     }
 }
@@ -463,3 +477,7 @@ fn code_for_kind(kind: &SymbolKind) -> &'static str {
 #[cfg(test)]
 #[path = "reachability_tests.rs"]
 mod reachability_tests;
+
+#[cfg(test)]
+#[path = "reachability_entrypoint_tests.rs"]
+mod reachability_entrypoint_tests;

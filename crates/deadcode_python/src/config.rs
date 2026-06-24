@@ -11,6 +11,8 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub entrypoints: Vec<String>,
     #[serde(default)]
+    pub weak_entrypoints: Vec<String>,
+    #[serde(default)]
     pub include_tests: bool,
     #[serde(default = "default_test_patterns")]
     pub test_patterns: Vec<String>,
@@ -31,6 +33,7 @@ pub struct LoadedProjectConfig {
     pub project_dir: PathBuf,
     pub roots: Vec<ResolvedRoot>,
     pub entrypoints: Vec<String>,
+    pub weak_entrypoints: Vec<String>,
     pub include_tests: bool,
     pub test_patterns: Vec<String>,
     pub rules: RuleConfig,
@@ -178,6 +181,7 @@ pub fn load_project_config(path: &Path) -> Result<LoadedProjectConfig, ConfigErr
         project_dir,
         roots,
         entrypoints: config.entrypoints,
+        weak_entrypoints: config.weak_entrypoints,
         include_tests: config.include_tests,
         test_patterns: config.test_patterns,
         rules: config.rules,
@@ -372,6 +376,7 @@ mod tests {
                 module: "example_app".to_string(),
             }],
             entrypoints: vec![],
+            weak_entrypoints: vec![],
             include_tests: false,
             test_patterns: default_test_patterns(),
             rules: RuleConfig::default(),
@@ -399,6 +404,7 @@ mod tests {
                 module: "{basename}".to_string(),
             }],
             entrypoints: vec![],
+            weak_entrypoints: vec![],
             include_tests: false,
             test_patterns: default_test_patterns(),
             rules: RuleConfig::default(),
@@ -438,6 +444,7 @@ mod tests {
                 },
             ],
             entrypoints: vec![],
+            weak_entrypoints: vec![],
             include_tests: false,
             test_patterns: default_test_patterns(),
             rules: RuleConfig::default(),
@@ -457,6 +464,7 @@ mod tests {
             r#"{
                 "roots": [{"path": "pkg", "module": "pkg"}],
                 "entrypoints": ["main.py"],
+                "weakEntrypoints": ["scripts/*.py"],
                 "includeTests": true
             }"#,
         )
@@ -465,6 +473,7 @@ mod tests {
         let loaded = load_project_config(&workspace.join("dead-code-finder.json")).unwrap();
 
         assert_eq!(loaded.entrypoints, vec!["main.py"]);
+        assert_eq!(loaded.weak_entrypoints, vec!["scripts/*.py"]);
         assert!(loaded.include_tests);
         assert_eq!(loaded.roots[0].module, "pkg");
     }

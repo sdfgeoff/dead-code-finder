@@ -51,13 +51,15 @@ Initial root sets:
 
 - `main`: configured entrypoints, `if __name__ == "__main__"` blocks, console-style configured entrypoints, and configured framework roots.
 - `test`: pytest tests, fixtures, and test support code when test analysis is enabled.
+- `weak`: configured auxiliary entrypoints, such as one-off scripts, that should be analyzed without keeping production symbols alive.
 
-Tests are not part of the main root set by default. Test references must not keep production symbols alive.
+Tests and weak entrypoints are not part of the main root set by default. Their references must not keep production symbols alive.
 
 The report should eventually distinguish:
 
 - dead everywhere,
 - dead from main roots but reachable from tests,
+- dead from main roots but reachable from weak entrypoints,
 - dead inside the test root set.
 
 ## Entry Points
@@ -66,6 +68,7 @@ Default entrypoint behavior:
 
 - `if __name__ == "__main__"` blocks are roots.
 - Explicit configured entrypoints are roots.
+- Files matched by configured weak entrypoints are roots only for the weak root set, even when they contain `if __name__ == "__main__"`.
 - Framework entrypoints are roots only when modeled through declarative rules.
 - Tests are roots only for the test root set, not for main reachability.
 
@@ -420,6 +423,7 @@ Important fixture families:
 - project-specific route glob loading,
 - Pydantic model construction,
 - typed service-example_item method calls,
+- context managers using `__enter__` and `__exit__`,
 - unresolved receiver diagnostics,
 - inheritance and overrides,
 - generic aliases,
