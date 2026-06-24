@@ -58,6 +58,42 @@ pub(super) fn constructor_binding(
     type_binding_from_expr(module, imports, &call.func)
 }
 
+pub(super) fn factory_return_binding(
+    module: &str,
+    imports: &[ResolvedImport],
+    rules: &RuleConfig,
+    expr: &ast::Expr,
+) -> Option<TypeBinding> {
+    let ast::Expr::Call(call) = expr else {
+        return None;
+    };
+    let callable = callable_identity(module, imports, &call.func)?;
+    let rule = rules
+        .factory_returns
+        .iter()
+        .find(|rule| rule.function == callable)?;
+    let output_keyword = call.arguments.keywords.iter().find(|keyword| {
+        keyword
+            .arg
+            .as_ref()
+            .is_some_and(|name| name.as_str() == rule.type_keyword)
+    })?;
+    let output_type = type_binding_from_expr(module, imports, &output_keyword.value)?;
+    let return_type = match rule.return_container.as_deref() {
+        Some("list") => TypeBinding {
+            base: "list".to_string(),
+            args: vec![output_type],
+            external: false,
+        },
+        _ => output_type,
+    };
+    Some(TypeBinding {
+        base: "typing.Callable".to_string(),
+        args: vec![return_type],
+        external: false,
+    })
+}
+
 pub(super) fn constructed_type_from_callee(
     module: &str,
     imports: &[ResolvedImport],

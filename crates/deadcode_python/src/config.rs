@@ -45,6 +45,8 @@ pub struct RuleConfig {
     #[serde(default)]
     pub constructors: Vec<ConstructorRule>,
     #[serde(default)]
+    pub factory_returns: Vec<FactoryReturnRule>,
+    #[serde(default)]
     pub decorators: Vec<DecoratorRule>,
     #[serde(default)]
     pub calls: Vec<CallRule>,
@@ -60,6 +62,15 @@ pub struct ConstructorRule {
     #[serde(rename = "match")]
     pub match_: String,
     pub produces_type: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FactoryReturnRule {
+    pub function: String,
+    pub type_keyword: String,
+    #[serde(default)]
+    pub return_container: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -208,6 +219,25 @@ fn validate_rules(rules: &RuleConfig) -> Result<(), ConfigError> {
             return Err(ConfigError::InvalidRule {
                 message: "constructor producesType must not be empty".to_string(),
             });
+        }
+    }
+    for factory_return in &rules.factory_returns {
+        if factory_return.function.trim().is_empty() {
+            return Err(ConfigError::InvalidRule {
+                message: "factory return function must not be empty".to_string(),
+            });
+        }
+        if factory_return.type_keyword.trim().is_empty() {
+            return Err(ConfigError::InvalidRule {
+                message: "factory return typeKeyword must not be empty".to_string(),
+            });
+        }
+        if let Some(container) = &factory_return.return_container {
+            if container != "list" {
+                return Err(ConfigError::InvalidRule {
+                    message: format!("unsupported factory returnContainer {container}"),
+                });
+            }
         }
     }
     for decorator in &rules.decorators {
