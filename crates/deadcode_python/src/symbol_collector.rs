@@ -14,6 +14,8 @@ mod symbol_metadata;
 mod symbol_references;
 #[path = "symbol_rules.rs"]
 mod symbol_rules;
+#[path = "symbol_typeflow.rs"]
+mod symbol_typeflow;
 #[path = "symbol_types.rs"]
 mod symbol_types;
 
