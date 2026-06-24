@@ -62,6 +62,16 @@ fn live_pydantic_model_marks_model_config() {
 }
 
 #[test]
+fn live_class_marks_slots_metadata() {
+    let report = analyze_fixture("live_class_marks_slots_metadata");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.LiveBucket.__slots__".to_string()));
+    assert!(symbols.contains(&"pkg.main.DeadBucket.__slots__".to_string()));
+}
+
+#[test]
 fn type_adapter_validate_python_returns_generic_arg() {
     let report = analyze_fixture("type_adapter_validate_python_returns_generic_arg");
     let symbols = finding_symbols(&report);

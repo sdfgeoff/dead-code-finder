@@ -231,6 +231,7 @@ fn compute_live_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<Strin
     }
 
     mark_symbol_owners_live(&mut live, &symbol_kinds);
+    mark_live_class_creation_metadata(&mut live, &symbol_kinds);
     live
 }
 
@@ -603,6 +604,25 @@ fn mark_symbol_owners_live(live: &mut HashSet<String>, symbol_kinds: &HashMap<St
         })
         .collect::<Vec<_>>();
     live.extend(owners);
+}
+
+fn mark_live_class_creation_metadata(
+    live: &mut HashSet<String>,
+    symbol_kinds: &HashMap<String, SymbolKind>,
+) {
+    let metadata = live
+        .iter()
+        .filter(|symbol| {
+            symbol_kinds
+                .get(symbol.as_str())
+                .is_some_and(|kind| *kind == SymbolKind::Class)
+        })
+        .filter_map(|class| {
+            let slots = format!("{class}.__slots__");
+            symbol_kinds.contains_key(&slots).then_some(slots)
+        })
+        .collect::<Vec<_>>();
+    live.extend(metadata);
 }
 
 fn code_for_kind(kind: &SymbolKind) -> &'static str {
