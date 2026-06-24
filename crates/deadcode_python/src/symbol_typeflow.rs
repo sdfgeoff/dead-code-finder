@@ -38,6 +38,9 @@ impl SymbolCollector<'_> {
         types: &HashMap<String, TypeBinding>,
     ) -> Option<TypeBinding> {
         let ast::Expr::Call(call) = expr else {
+            if let ast::Expr::Await(await_expr) = expr {
+                return self.external_call_result_binding(&await_expr.value, types);
+            }
             return None;
         };
         let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
