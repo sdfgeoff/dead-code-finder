@@ -37,6 +37,7 @@ pub struct ModuleIndex {
     pub symbols: Vec<IndexedSymbol>,
     pub imports: Vec<ResolvedImport>,
     pub classes: Vec<ClassInfo>,
+    pub value_bindings: Vec<ValueBinding>,
     pub function_signatures: Vec<FunctionSignature>,
     pub call_argument_types: Vec<CallArgumentType>,
     pub references: Vec<SymbolReference>,
@@ -91,6 +92,12 @@ impl TypeBinding {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FieldAnnotation {
     Concrete(TypeBinding),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValueBinding {
+    pub qualified_name: String,
+    pub binding: TypeBinding,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -243,6 +250,7 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
     }
 
     let mut all_classes = Vec::new();
+    let mut all_value_bindings = Vec::new();
     let mut all_function_signatures = Vec::new();
     for (file, module) in &project_files {
         let module_index = index_module(
@@ -252,12 +260,14 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             &config.rules,
             &[],
             &[],
+            &[],
             &ReexportMap::new(),
             false,
             false,
             false,
         )?;
         all_classes.extend(module_index.module.classes.clone());
+        all_value_bindings.extend(module_index.module.value_bindings.clone());
         all_function_signatures.extend(module_index.module.function_signatures.clone());
         index.modules.push(module_index.module);
     }
@@ -271,6 +281,7 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             &index.known_modules,
             &config.rules,
             &all_classes,
+            &all_value_bindings,
             &all_function_signatures,
             &reexports,
             is_configured_entrypoint(config, file),
@@ -392,6 +403,7 @@ fn index_module(
     known_modules: &HashSet<String>,
     rules: &RuleConfig,
     available_classes: &[ClassInfo],
+    available_values: &[ValueBinding],
     available_fn_sigs: &[FunctionSignature],
     reexports: &ReexportMap,
     is_configured_entrypoint: bool,
@@ -412,6 +424,7 @@ fn index_module(
     }];
     let mut imports = Vec::new();
     let mut classes = Vec::new();
+    let mut value_bindings = Vec::new();
     let mut function_signatures = Vec::new();
     let mut call_argument_types = Vec::new();
     let mut references = Vec::new();
@@ -431,7 +444,9 @@ fn index_module(
                 symbols: &mut symbols,
                 imports: &mut imports,
                 classes: &mut classes,
+                value_bindings: &mut value_bindings,
                 available_classes,
+                available_values,
                 available_fn_sigs,
                 reexports,
                 fn_sigs: &mut function_signatures,
@@ -475,6 +490,7 @@ fn index_module(
             symbols,
             imports,
             classes,
+            value_bindings,
             function_signatures,
             call_argument_types,
             references,

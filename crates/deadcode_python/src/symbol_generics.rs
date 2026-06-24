@@ -42,6 +42,13 @@ pub(super) fn expr_type(
             collection_item_type(&expr_type(classes, &subscript.value, types)?)
         }
         ast::Expr::Await(await_expr) => expr_type(classes, &await_expr.value, types),
+        ast::Expr::List(list) => {
+            list_item_type(classes, &list.elts, types).map(|item| TypeBinding {
+                base: "list".to_string(),
+                args: vec![item],
+                external: false,
+            })
+        }
         _ => None,
     }
 }
@@ -108,4 +115,23 @@ fn collection_item_type(collection_type: &TypeBinding) -> Option<TypeBinding> {
 
 fn is_mapping_collection(type_name: &str) -> bool {
     matches!(type_name, "dict" | "typing.Dict" | "typing.Mapping") || type_name.ends_with(".dict")
+}
+
+fn list_item_type(
+    classes: &[ClassInfo],
+    elements: &[ast::Expr],
+    types: &HashMap<String, TypeBinding>,
+) -> Option<TypeBinding> {
+    let mut item_type = None;
+    for element in elements {
+        let element_type = expr_type(classes, element, types)?;
+        if item_type
+            .as_ref()
+            .is_some_and(|existing: &TypeBinding| existing != &element_type)
+        {
+            return None;
+        }
+        item_type = Some(element_type);
+    }
+    item_type
 }

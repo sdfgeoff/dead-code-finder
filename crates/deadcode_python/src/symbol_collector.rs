@@ -34,6 +34,7 @@ use self::symbol_types::type_binding_from_expr;
 use super::{
     CallArgumentType, ClassInfo, FunctionSignature, IndexedSymbol, MemberReference, ResolvedImport,
     SourceLocator, SymbolReference, TypeBinding, UnresolvedReceiver, UnsupportedExpansion,
+    ValueBinding,
 };
 use crate::config::RuleConfig;
 use crate::symbol_index::ReexportMap;
@@ -45,7 +46,9 @@ pub(super) struct SymbolCollector<'a> {
     pub(super) symbols: &'a mut Vec<IndexedSymbol>,
     pub(super) imports: &'a mut Vec<ResolvedImport>,
     pub(super) classes: &'a mut Vec<ClassInfo>,
+    pub(super) value_bindings: &'a mut Vec<ValueBinding>,
     pub(super) available_classes: &'a [ClassInfo],
+    pub(super) available_values: &'a [ValueBinding],
     pub(super) available_fn_sigs: &'a [FunctionSignature],
     pub(super) fn_sigs: &'a mut Vec<FunctionSignature>,
     pub(super) call_args: &'a mut Vec<CallArgumentType>,
@@ -109,6 +112,7 @@ impl SymbolCollector<'_> {
                 );
             }
             ast::Stmt::ImportFrom(import_from) => {
+                let import_start = self.imports.len();
                 collect_import_from(
                     self.module,
                     self.file,
@@ -118,6 +122,7 @@ impl SymbolCollector<'_> {
                     self.reexports,
                     import_from,
                 );
+                self.push_imported_value_bindings(module_types, import_start);
             }
             ast::Stmt::If(if_stmt) if is_main_guard(if_stmt) => {
                 *self.main_entry = true;

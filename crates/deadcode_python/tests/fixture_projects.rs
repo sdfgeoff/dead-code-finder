@@ -113,6 +113,17 @@ fn awaited_mapping_subscript_resolves_generic_item_fields() {
 }
 
 #[test]
+fn imported_module_list_literals_resolve_item_fields() {
+    let report = analyze_fixture("imported_module_list_literals_resolve_item_fields");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.schemes.Scheme.name".to_string()));
+    assert!(!symbols.contains(&"pkg.schemes.Scheme.enabled".to_string()));
+    assert!(symbols.contains(&"pkg.schemes.Scheme.unused".to_string()));
+}
+
+#[test]
 fn scripts_inheritance_generics_and_unresolved_receivers_are_reported() {
     let report = analyze_fixture("scripts_inheritance_generics_and_unresolved_receivers");
     let symbols = finding_symbols(&report);

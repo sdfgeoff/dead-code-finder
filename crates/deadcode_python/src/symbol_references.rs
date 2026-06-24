@@ -51,6 +51,9 @@ impl SymbolCollector<'_> {
                     for target in &assign.targets {
                         if let Some(name) = target_name(target) {
                             types.insert(name.to_string(), type_name.clone());
+                            if owner == self.module {
+                                self.push_value_binding(name, type_name.clone());
+                            }
                         }
                     }
                 }
@@ -409,6 +412,44 @@ impl SymbolCollector<'_> {
             .then(|| TypeBinding::erased(same_module))
     }
 
+    pub(super) fn push_imported_value_bindings(
+        &mut self,
+        types: &mut HashMap<String, TypeBinding>,
+        import_start: usize,
+    ) {
+        let imports = &self.imports[import_start..];
+        for import in imports {
+            let Some(qualified_name) = import_value_qualified_name(&import.target) else {
+                continue;
+            };
+            let Some(binding) = self
+                .available_values
+                .iter()
+                .find(|value| value.qualified_name == qualified_name)
+                .map(|value| value.binding.clone())
+            else {
+                continue;
+            };
+            types.insert(import.binding.clone(), binding);
+        }
+    }
+
+    fn push_value_binding(&mut self, name: &str, binding: TypeBinding) {
+        let qualified_name = format!("{}.{}", self.module, name);
+        if let Some(existing) = self
+            .value_bindings
+            .iter_mut()
+            .find(|value| value.qualified_name == qualified_name)
+        {
+            existing.binding = binding;
+            return;
+        }
+        self.value_bindings.push(crate::symbol_index::ValueBinding {
+            qualified_name,
+            binding,
+        });
+    }
+
     fn mark_external_if_outside_project(&self, binding: &mut TypeBinding) {
         if binding.external || self.is_project_type(&binding.base) {
             return;
@@ -428,5 +469,16 @@ fn import_target_is_external(target: &ImportTarget) -> bool {
         ImportTarget::Module { external, .. }
         | ImportTarget::Symbol { external, .. }
         | ImportTarget::Star { external, .. } => *external,
+    }
+}
+
+fn import_value_qualified_name(target: &ImportTarget) -> Option<String> {
+    match target {
+        ImportTarget::Symbol {
+            module,
+            name,
+            external: false,
+        } => Some(format!("{module}.{name}")),
+        _ => None,
     }
 }
