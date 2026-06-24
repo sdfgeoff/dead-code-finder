@@ -4,6 +4,12 @@ use deadcode_core::{Diagnostic, Finding, Severity, SymbolKind};
 
 use crate::symbol_index::{ClassInfo, FunctionSignature, ImportTarget, ModuleIndex, SymbolIndex};
 
+use self::reachability_class_metadata::{
+    mark_live_class_creation_metadata, mark_symbol_owners_live,
+};
+
+#[path = "reachability_class_metadata.rs"]
+mod reachability_class_metadata;
 #[path = "reachability_protocol.rs"]
 mod reachability_protocol;
 
@@ -583,46 +589,6 @@ fn is_subclass_inner(
     class_info.bases.iter().any(|base| {
         base.base == base_type || is_subclass_inner(&base.base, base_type, class_map, visited)
     })
-}
-
-fn mark_symbol_owners_live(live: &mut HashSet<String>, symbol_kinds: &HashMap<String, SymbolKind>) {
-    let owners = live
-        .iter()
-        .filter_map(|symbol| {
-            let kind = symbol_kinds.get(symbol)?;
-            if !matches!(
-                kind,
-                SymbolKind::Method | SymbolKind::Attribute | SymbolKind::Field
-            ) {
-                return None;
-            }
-            let (owner, _) = symbol.rsplit_once('.')?;
-            symbol_kinds
-                .get(owner)
-                .is_some_and(|kind| *kind == SymbolKind::Class)
-                .then(|| owner.to_string())
-        })
-        .collect::<Vec<_>>();
-    live.extend(owners);
-}
-
-fn mark_live_class_creation_metadata(
-    live: &mut HashSet<String>,
-    symbol_kinds: &HashMap<String, SymbolKind>,
-) {
-    let metadata = live
-        .iter()
-        .filter(|symbol| {
-            symbol_kinds
-                .get(symbol.as_str())
-                .is_some_and(|kind| *kind == SymbolKind::Class)
-        })
-        .filter_map(|class| {
-            let slots = format!("{class}.__slots__");
-            symbol_kinds.contains_key(&slots).then_some(slots)
-        })
-        .collect::<Vec<_>>();
-    live.extend(metadata);
 }
 
 fn code_for_kind(kind: &SymbolKind) -> &'static str {

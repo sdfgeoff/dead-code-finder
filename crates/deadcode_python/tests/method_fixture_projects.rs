@@ -78,7 +78,9 @@ fn type_adapter_validate_python_returns_generic_arg() {
 
     assert!(report.diagnostics.is_empty());
     assert!(!symbols.contains(&"pkg.models.BaseEvent.source_id".to_string()));
-    assert!(symbols.contains(&"pkg.models.BaseEvent.unused_base".to_string()));
+    assert!(!symbols.contains(&"pkg.models.BaseEvent.unused_base".to_string()));
+    assert!(!symbols.contains(&"pkg.models.ExternalPayload.parsed_only".to_string()));
+    assert!(symbols.contains(&"pkg.models.DeadPayload.dead_external".to_string()));
 }
 
 #[test]

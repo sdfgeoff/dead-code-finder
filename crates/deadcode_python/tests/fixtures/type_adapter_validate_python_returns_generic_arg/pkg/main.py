@@ -1,8 +1,9 @@
-from pkg.models import EventAdapter
+from pkg.models import EventAdapter, parse_external
 
 def run(payload: object) -> str:
     event = EventAdapter.validate_python(payload)
-    return event.source_id
+    external = parse_external(payload)
+    return event.source_id + external.item.used_external
 
 
 run({})

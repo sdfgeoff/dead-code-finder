@@ -6,13 +6,38 @@ use ruff_text_size::Ranged;
 use super::symbol_aliases::expand_alias_binding;
 use super::symbol_generics::substitute_type_params;
 use super::symbol_members::push_member_reference;
-use super::symbol_types::type_binding_from_annotation_expr;
+use super::symbol_rules::callable_identity;
+use super::symbol_types::{type_binding_from_annotation_expr, type_binding_from_expr};
 use super::SymbolCollector;
 use deadcode_core::SymbolKind;
 
 use crate::symbol_index::{AccessKind, ClassInfo, FieldAnnotation, TypeBinding};
 
 impl SymbolCollector<'_> {
+    pub(super) fn pydantic_type_adapter_binding(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        let ast::Expr::Call(call) = expr else {
+            return None;
+        };
+        let callable = callable_identity(self.module, self.imports, &call.func)?;
+        if callable != "pydantic.TypeAdapter" {
+            return None;
+        }
+        let target_type = call
+            .arguments
+            .args
+            .first()
+            .and_then(|arg| self.type_adapter_target_binding(arg, types))?;
+        Some(TypeBinding {
+            base: "pydantic.TypeAdapter".to_string(),
+            args: vec![target_type],
+            external: false,
+        })
+    }
+
     pub(super) fn pydantic_validation_call_binding(
         &self,
         expr: &ast::Expr,
@@ -48,12 +73,25 @@ impl SymbolCollector<'_> {
         let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
             return;
         };
-        if !is_external_model_validation_call(attribute.attr.as_str(), call) {
-            return;
-        }
         let Some(receiver_type) = self.receiver_type_for_expr(&attribute.value, types) else {
             return;
         };
+        if attribute.attr.as_str() == "validate_python"
+            && receiver_type.base == "pydantic.TypeAdapter"
+        {
+            if let Some(target_type) = receiver_type.args.first() {
+                self.collect_validated_type_references(
+                    owner,
+                    target_type,
+                    call.range(),
+                    &mut Vec::new(),
+                );
+            }
+            return;
+        }
+        if !is_external_model_validation_call(attribute.attr.as_str(), call) {
+            return;
+        }
         if !self.class_derives_from(&receiver_type.base, "pydantic.BaseModel") {
             return;
         }
@@ -158,6 +196,57 @@ impl SymbolCollector<'_> {
 
     fn class_derives_from(&self, concrete_type: &str, base_type: &str) -> bool {
         self.class_derives_from_inner(concrete_type, base_type, &mut Vec::new())
+    }
+
+    fn type_adapter_target_binding(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        match expr {
+            ast::Expr::BinOp(bin_op) if bin_op.op == ast::Operator::BitOr => Some(TypeBinding {
+                base: "typing.Union".to_string(),
+                args: [
+                    self.type_adapter_target_binding(&bin_op.left, types),
+                    self.type_adapter_target_binding(&bin_op.right, types),
+                ]
+                .into_iter()
+                .flatten()
+                .collect(),
+                external: false,
+            }),
+            ast::Expr::Subscript(subscript) => {
+                let base = type_binding_from_expr(self.module, self.imports, &subscript.value)?;
+                Some(TypeBinding {
+                    external: base.external && !is_typing_container(&base.base),
+                    base: base.base,
+                    args: self.type_adapter_target_args(&subscript.slice, types),
+                })
+            }
+            ast::Expr::Name(name) => types
+                .get(name.id.as_str())
+                .and_then(type_object_arg)
+                .or_else(|| type_binding_from_expr(self.module, self.imports, expr)),
+            _ => type_binding_from_expr(self.module, self.imports, expr),
+        }
+    }
+
+    fn type_adapter_target_args(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Vec<TypeBinding> {
+        match expr {
+            ast::Expr::Tuple(tuple) => tuple
+                .elts
+                .iter()
+                .filter_map(|expr| self.type_adapter_target_binding(expr, types))
+                .collect(),
+            expr => self
+                .type_adapter_target_binding(expr, types)
+                .into_iter()
+                .collect(),
+        }
     }
 
     fn class_is_enum(&self, concrete_type: &str) -> bool {
@@ -276,6 +365,41 @@ fn is_collection_type(type_name: &str) -> bool {
     ) || type_name.ends_with(".Sequence")
         || type_name.ends_with(".Union")
         || type_name.ends_with(".Optional")
+}
+
+fn type_object_arg(binding: &TypeBinding) -> Option<TypeBinding> {
+    is_type_object(&binding.base)
+        .then(|| binding.args.first().cloned())
+        .flatten()
+}
+
+fn is_type_object(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "type" | "typing.Type" | "typing_extensions.Type" | "Type"
+    ) || type_name.ends_with(".Type")
+}
+
+fn is_typing_container(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "typing.Annotated"
+            | "typing.Callable"
+            | "typing.Dict"
+            | "typing.FrozenSet"
+            | "typing.List"
+            | "typing.Optional"
+            | "typing.Sequence"
+            | "typing.Set"
+            | "typing.Tuple"
+            | "typing.Type"
+            | "typing.Union"
+            | "types.UnionType"
+    ) || type_name.ends_with(".Annotated")
+        || type_name.ends_with(".Optional")
+        || type_name.ends_with(".Sequence")
+        || type_name.ends_with(".Type")
+        || type_name.ends_with(".Union")
 }
 
 fn is_external_model_validation_call(method: &str, call: &ast::ExprCall) -> bool {
