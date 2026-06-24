@@ -397,13 +397,17 @@ impl SymbolCollector<'_> {
         types: &HashMap<String, TypeBinding>,
         substitutions: &mut HashMap<String, TypeBinding>,
     ) {
-        let Some(type_var) = type_var_from_type_argument(parameter_annotation) else {
+        let Some(annotation) = parameter_annotation else {
             return;
         };
         let Some(argument_type) = self.receiver_type_for_expr(argument, types) else {
             return;
         };
-        substitutions.insert(type_var.to_string(), argument_type);
+        if let Some(type_var) = type_var_from_type_argument(annotation) {
+            substitutions.insert(type_var.to_string(), argument_type);
+            return;
+        }
+        collect_type_var_substitutions(annotation, &argument_type, substitutions);
     }
 }
 
@@ -495,8 +499,7 @@ fn optional_inner_type(binding: &TypeBinding) -> Option<&TypeBinding> {
     None
 }
 
-fn type_var_from_type_argument(annotation: Option<&TypeBinding>) -> Option<&str> {
-    let annotation = annotation?;
+fn type_var_from_type_argument(annotation: &TypeBinding) -> Option<&str> {
     if !matches!(
         annotation.base.as_str(),
         "typing.Type" | "typing_extensions.Type" | "Type"
@@ -505,6 +508,30 @@ fn type_var_from_type_argument(annotation: Option<&TypeBinding>) -> Option<&str>
         return None;
     }
     annotation.args.first().map(|arg| arg.base.as_str())
+}
+
+fn collect_type_var_substitutions(
+    pattern: &TypeBinding,
+    value: &TypeBinding,
+    substitutions: &mut HashMap<String, TypeBinding>,
+) {
+    if pattern.args.is_empty() {
+        if pattern.base != value.base && is_type_var_like(&pattern.base) {
+            substitutions.insert(pattern.base.clone(), value.clone());
+        }
+        return;
+    }
+    if pattern.args.len() != value.args.len() {
+        return;
+    }
+    for (pattern_arg, value_arg) in pattern.args.iter().zip(&value.args) {
+        collect_type_var_substitutions(pattern_arg, value_arg, substitutions);
+    }
+}
+
+fn is_type_var_like(type_name: &str) -> bool {
+    let name = type_name.rsplit('.').next().unwrap_or(type_name);
+    name.starts_with('T') || name.ends_with("Type")
 }
 
 fn substitute_type_vars(

@@ -1,0 +1,23 @@
+from typing import Sequence, TypeVar
+
+from pkg import Feature
+
+PropertiesType = TypeVar("PropertiesType")
+
+
+class Properties:
+    amount: float
+    unused: int
+
+
+def total(features: Sequence[Feature[PropertiesType]]) -> list[PropertiesType]:
+    feature_list = list(features)
+    return [feature.properties for feature in feature_list]
+
+
+def total_area(features: Sequence[Feature[Properties]]) -> float:
+    results = total(features)
+    return results[0].amount
+
+
+total_area([])
