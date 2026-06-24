@@ -136,6 +136,16 @@ fn cast_ifexp_list_comprehension_item_type() {
     assert!(symbols.contains(&"pkg.main.Polygon.unused".to_string()));
 }
 
+#[test]
+fn list_index_tuple_unpack_resolves_member() {
+    let report = analyze_fixture("list_index_tuple_unpack_resolves_member");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Geometry.intersects".to_string()));
+    assert!(symbols.contains(&"pkg.main.Geometry.unused".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))

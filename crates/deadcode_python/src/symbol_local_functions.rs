@@ -20,18 +20,22 @@ impl SymbolCollector<'_> {
             SymbolKind::Function,
             function.range,
         );
-        types.insert(function.name.to_string(), function_object_binding());
+        types.insert(
+            function.name.to_string(),
+            function_object_binding(function_owner.clone()),
+        );
 
         let mut function_types = types.clone();
         function_types.extend(self.function_type_bindings(function, None, types));
+        self.push_function_signature(&function_owner, function, &function_types);
         self.collect_function_references(&function_owner, function, function_types);
     }
 }
 
-fn function_object_binding() -> TypeBinding {
+fn function_object_binding(function_owner: String) -> TypeBinding {
     TypeBinding {
-        base: "types.FunctionType".to_string(),
+        base: function_owner,
         args: Vec::new(),
-        external: true,
+        external: false,
     }
 }

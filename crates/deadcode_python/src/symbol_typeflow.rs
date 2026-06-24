@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ruff_python_ast as ast;
 
-use super::symbol_aliases::type_alias_type_binding;
+use super::symbol_aliases::{expand_alias_binding, type_alias_type_binding};
 use super::symbol_branch_types::{
     coalesced_optional_type, compatible_branch_type, is_empty_list_expr,
     optional_list_or_empty_list_type, optional_list_with_empty_list_type,
@@ -93,7 +93,10 @@ impl SymbolCollector<'_> {
             .find(|signature| signature.function == callee)?;
         let return_type = signature.return_type.clone()?;
         let substitutions = self.type_var_substitutions(signature, call, types);
-        Some(substitute_type_vars(&return_type, &substitutions))
+        Some(expand_alias_binding(
+            &substitute_type_vars(&return_type, &substitutions),
+            self.available_values,
+        ))
     }
 
     fn executor_callable_return_binding(

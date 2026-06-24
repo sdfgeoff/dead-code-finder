@@ -221,6 +221,9 @@ impl SymbolCollector<'_> {
                     self.collect_expr_references(owner, value, types);
                 }
             }
+            ast::Expr::UnaryOp(unary_op) => {
+                self.collect_expr_references(owner, &unary_op.operand, types);
+            }
             ast::Expr::Subscript(subscript) => {
                 self.collect_expr_references(owner, &subscript.value, types);
                 self.collect_expr_references(owner, &subscript.slice, types);

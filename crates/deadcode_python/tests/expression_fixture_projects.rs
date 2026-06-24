@@ -61,6 +61,26 @@ fn class_body_initializer_references_are_traversed() {
     assert!(symbols.contains(&"pkg.main.unused_parse".to_string()));
 }
 
+#[test]
+fn module_alias_from_factory_field_read_resolves_receiver() {
+    let report = analyze_fixture("module_alias_from_factory_field_read");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.config.Config.ENABLE_FEATURE".to_string()));
+    assert!(symbols.contains(&"pkg.config.Config.UNUSED_FEATURE".to_string()));
+}
+
+#[test]
+fn unary_expression_references_are_traversed() {
+    let report = analyze_fixture("unary_expression_references");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Config.ENABLE_FEATURE".to_string()));
+    assert!(symbols.contains(&"pkg.main.Config.UNUSED_FEATURE".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))
