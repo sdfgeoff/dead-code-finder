@@ -70,9 +70,25 @@ pub struct ClassFieldInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeBinding {
+    pub base: String,
+    pub args: Vec<TypeBinding>,
+    pub external: bool,
+}
+
+impl TypeBinding {
+    pub fn erased(base: String) -> Self {
+        Self {
+            base,
+            args: Vec::new(),
+            external: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FieldAnnotation {
-    Concrete { type_name: String, external: bool },
-    TypeParam(String),
+    Concrete(TypeBinding),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -209,6 +225,7 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
     let mut index = SymbolIndex::default();
     index.include_tests = config.include_tests;
     index.include_weak = !config.weak_entrypoints.is_empty();
+    let mut project_files = Vec::new();
 
     for root in &config.roots {
         let mut files = Vec::new();
@@ -217,31 +234,41 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
 
         for file in files {
             let module = module_name_for_file(root, &file);
-            index.known_modules.insert(module);
+            index.known_modules.insert(module.clone());
+            project_files.push((file, module));
         }
     }
 
-    for root in &config.roots {
-        let mut files = Vec::new();
-        collect_python_files(&root.path, &mut files)?;
-        files.sort();
+    let mut all_classes = Vec::new();
+    for (file, module) in &project_files {
+        let module_index = index_module(
+            module,
+            file,
+            &index.known_modules,
+            &config.rules,
+            &[],
+            false,
+            false,
+            false,
+        )?;
+        all_classes.extend(module_index.module.classes);
+    }
 
-        for file in files {
-            let module = module_name_for_file(root, &file);
-            let module_index = index_module(
-                &module,
-                &file,
-                &index.known_modules,
-                &config.rules,
-                is_configured_entrypoint(config, &file),
-                is_configured_weak_entrypoint(config, &file),
-                is_test_file(config, &file),
-            )?;
-            index
-                .parse_diagnostics
-                .extend(module_index.parse_diagnostics);
-            index.modules.push(module_index.module);
-        }
+    for (file, module) in &project_files {
+        let module_index = index_module(
+            module,
+            file,
+            &index.known_modules,
+            &config.rules,
+            &all_classes,
+            is_configured_entrypoint(config, file),
+            is_configured_weak_entrypoint(config, file),
+            is_test_file(config, file),
+        )?;
+        index
+            .parse_diagnostics
+            .extend(module_index.parse_diagnostics);
+        index.modules.push(module_index.module);
     }
 
     index.modules.sort_by(|left, right| {
@@ -329,6 +356,7 @@ fn index_module(
     file: &Path,
     known_modules: &HashSet<String>,
     rules: &RuleConfig,
+    available_classes: &[ClassInfo],
     is_configured_entrypoint: bool,
     is_configured_weak_entrypoint: bool,
     is_test: bool,
@@ -366,6 +394,7 @@ fn index_module(
                 symbols: &mut symbols,
                 imports: &mut imports,
                 classes: &mut classes,
+                available_classes,
                 fn_sigs: &mut function_signatures,
                 call_args: &mut call_argument_types,
                 references: &mut references,

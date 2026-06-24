@@ -4,15 +4,17 @@ use ruff_python_ast as ast;
 use ruff_text_size::Ranged;
 
 use super::symbol_expr::target_name;
-use super::symbol_generics::field_read_type;
+use super::symbol_generics::{field_read_type, iterable_item_type};
 use super::symbol_members::push_member_reference;
 use super::symbol_rules::{
     callable_argument_references, callable_identity, constructed_type_from_callee,
     constructor_binding,
 };
-use super::symbol_types::{type_binding_from_expr, TypeBinding};
+use super::symbol_types::type_binding_from_expr;
 use super::SymbolCollector;
-use crate::symbol_index::{AccessKind, CallArgumentType, ImportTarget, UnsupportedExpansion};
+use crate::symbol_index::{
+    AccessKind, CallArgumentType, ImportTarget, TypeBinding, UnsupportedExpansion,
+};
 
 impl SymbolCollector<'_> {
     pub(super) fn collect_statement_references(
@@ -41,7 +43,7 @@ impl SymbolCollector<'_> {
                 }
                 if let Some(mut type_name) =
                     constructor_binding(self.module, self.imports, self.rules, &assign.value)
-                        .or_else(|| field_read_type(self.classes, &assign.value, types))
+                        .or_else(|| field_read_type(self.available_classes, &assign.value, types))
                         .or_else(|| self.external_call_result_binding(&assign.value, types))
                 {
                     self.mark_external_if_outside_project(&mut type_name);
@@ -95,6 +97,12 @@ impl SymbolCollector<'_> {
             ast::Stmt::For(for_stmt) => {
                 self.collect_expr_references(owner, &for_stmt.iter, types);
                 self.collect_assignment_target(owner, &for_stmt.target, types);
+                if let (Some(name), Some(item_type)) = (
+                    target_name(&for_stmt.target),
+                    iterable_item_type(self.available_classes, &for_stmt.iter, types),
+                ) {
+                    types.insert(name.to_string(), item_type);
+                }
                 for nested in &for_stmt.body {
                     self.collect_statement_references(owner, nested, types);
                 }
@@ -289,7 +297,7 @@ impl SymbolCollector<'_> {
                 .get(receiver.id.as_str())
                 .cloned()
                 .or_else(|| self.class_object_binding(receiver.id.as_str())),
-            value => field_read_type(self.classes, value, types),
+            value => field_read_type(self.available_classes, value, types),
         }?;
         receiver_type.external.then(|| TypeBinding {
             base: format!("{}.{}", receiver_type.base, attribute.attr.as_str()),
@@ -305,7 +313,7 @@ impl SymbolCollector<'_> {
         types: &HashMap<String, TypeBinding>,
     ) {
         let Some(binding) = constructor_binding(self.module, self.imports, self.rules, expr)
-            .or_else(|| field_read_type(self.classes, expr, types))
+            .or_else(|| field_read_type(self.available_classes, expr, types))
         else {
             return;
         };
@@ -342,7 +350,7 @@ impl SymbolCollector<'_> {
                     .cloned()
                     .or_else(|| self.class_object_binding(receiver_name))
             }
-            value => field_read_type(self.classes, value, types),
+            value => field_read_type(self.available_classes, value, types),
         };
         if let Some(receiver_type) = receiver_type {
             if receiver_type.external {
@@ -393,7 +401,7 @@ impl SymbolCollector<'_> {
             };
         }
         let same_module = format!("{}.{}", self.module, receiver_name);
-        self.classes
+        self.available_classes
             .iter()
             .any(|class_info| class_info.class == same_module)
             .then(|| TypeBinding::erased(same_module))

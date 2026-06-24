@@ -1,23 +1,6 @@
 use ruff_python_ast as ast;
 
-use crate::symbol_index::{ImportTarget, ResolvedImport};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct TypeBinding {
-    pub(super) base: String,
-    pub(super) args: Vec<String>,
-    pub(super) external: bool,
-}
-
-impl TypeBinding {
-    pub(super) fn erased(base: String) -> Self {
-        Self {
-            base,
-            args: Vec::new(),
-            external: false,
-        }
-    }
-}
+use crate::symbol_index::{ImportTarget, ResolvedImport, TypeBinding};
 
 pub(super) fn type_binding_from_expr(
     module: &str,
@@ -93,14 +76,18 @@ fn type_binding_from_name_expr(
     }
 }
 
-fn type_args_from_expr(module: &str, imports: &[ResolvedImport], expr: &ast::Expr) -> Vec<String> {
+fn type_args_from_expr(
+    module: &str,
+    imports: &[ResolvedImport],
+    expr: &ast::Expr,
+) -> Vec<TypeBinding> {
     match expr {
         ast::Expr::Tuple(tuple) => tuple
             .elts
             .iter()
-            .filter_map(|expr| type_name_from_expr(module, imports, expr))
+            .filter_map(|expr| type_binding_from_expr(module, imports, expr))
             .collect(),
-        expr => type_name_from_expr(module, imports, expr)
+        expr => type_binding_from_expr(module, imports, expr)
             .into_iter()
             .collect(),
     }

@@ -79,6 +79,17 @@ fn external_type_flows_suppress_unresolved_receivers() {
 }
 
 #[test]
+fn generic_collection_iteration_resolves_feature_fields() {
+    let report = analyze_fixture("generic_collection_iteration_resolves_feature_fields");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.models.Feature.geometry".to_string()));
+    assert!(!symbols.contains(&"pkg.models.Feature.properties".to_string()));
+    assert!(symbols.contains(&"pkg.models.Feature.unused".to_string()));
+}
+
+#[test]
 fn scripts_inheritance_generics_and_unresolved_receivers_are_reported() {
     let report = analyze_fixture("scripts_inheritance_generics_and_unresolved_receivers");
     let symbols = finding_symbols(&report);

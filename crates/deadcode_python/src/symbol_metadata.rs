@@ -1,11 +1,11 @@
 use ruff_python_ast as ast;
 
 use crate::symbol_index::{
-    ClassFieldInfo, ClassInfo, FieldAnnotation, FunctionSignature, ResolvedImport,
+    ClassFieldInfo, ClassInfo, FieldAnnotation, FunctionSignature, ResolvedImport, TypeBinding,
 };
 
 use super::symbol_expr::self_attribute_name;
-use super::symbol_types::{type_binding_from_expr, type_name_from_expr, TypeBinding};
+use super::symbol_types::{type_binding_from_expr, type_name_from_expr};
 
 pub(super) fn class_info(
     module: &str,
@@ -57,7 +57,7 @@ pub(super) fn function_signature(
 }
 
 fn class_type_params(class_def: &ast::StmtClassDef) -> Vec<String> {
-    class_def
+    let inline_params: Vec<String> = class_def
         .type_params
         .as_deref()
         .map(|type_params| {
@@ -69,7 +69,40 @@ fn class_type_params(class_def: &ast::StmtClassDef) -> Vec<String> {
                 })
                 .collect()
         })
+        .unwrap_or_default();
+    if !inline_params.is_empty() {
+        return inline_params;
+    }
+    class_def
+        .arguments
+        .as_ref()
+        .and_then(|arguments| {
+            arguments.args.iter().find_map(|base| {
+                let ast::Expr::Subscript(subscript) = base else {
+                    return None;
+                };
+                let ast::Expr::Name(name) = subscript.value.as_ref() else {
+                    return None;
+                };
+                (name.id.as_str() == "Generic")
+                    .then(|| type_param_names_from_expr(&subscript.slice))
+            })
+        })
         .unwrap_or_default()
+}
+
+fn type_param_names_from_expr(expr: &ast::Expr) -> Vec<String> {
+    match expr {
+        ast::Expr::Tuple(tuple) => tuple.elts.iter().filter_map(type_param_name).collect(),
+        expr => type_param_name(expr).into_iter().collect(),
+    }
+}
+
+fn type_param_name(expr: &ast::Expr) -> Option<String> {
+    match expr {
+        ast::Expr::Name(name) => Some(name.id.as_str().to_string()),
+        _ => None,
+    }
 }
 
 fn class_fields(
@@ -161,10 +194,7 @@ fn init_self_field(
     };
     Some(ClassFieldInfo {
         name: field_name.to_string(),
-        annotation: FieldAnnotation::Concrete {
-            type_name: type_name.base,
-            external: type_name.external,
-        },
+        annotation: FieldAnnotation::Concrete(type_name),
     })
 }
 
@@ -174,16 +204,21 @@ fn field_annotation(
     annotation: &ast::Expr,
     type_params: &[String],
 ) -> Option<FieldAnnotation> {
-    if let ast::Expr::Name(name) = annotation {
-        let name = name.id.as_str();
-        if type_params.iter().any(|type_param| type_param == name) {
-            return Some(FieldAnnotation::TypeParam(name.to_string()));
+    let mut binding = type_binding_from_expr(module, imports, annotation)?;
+    rewrite_type_params(module, &mut binding, type_params);
+    Some(FieldAnnotation::Concrete(binding))
+}
+
+fn rewrite_type_params(module: &str, binding: &mut TypeBinding, type_params: &[String]) {
+    for type_param in type_params {
+        if binding.base == format!("{module}.{type_param}") {
+            binding.base = type_param.clone();
+            break;
         }
     }
-    type_binding_from_expr(module, imports, annotation).map(|binding| FieldAnnotation::Concrete {
-        type_name: binding.base,
-        external: binding.external,
-    })
+    for arg in &mut binding.args {
+        rewrite_type_params(module, arg, type_params);
+    }
 }
 
 fn target_name(expr: &ast::Expr) -> Option<&str> {

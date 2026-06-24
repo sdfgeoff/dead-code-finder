@@ -28,10 +28,10 @@ use self::symbol_fields::collect_self_assignments;
 use self::symbol_imports::{collect_import, collect_import_from};
 use self::symbol_metadata::{class_info, function_signature};
 use self::symbol_rules::decorator_registers_function;
-use self::symbol_types::{type_binding_from_expr, TypeBinding};
+use self::symbol_types::type_binding_from_expr;
 use super::{
     CallArgumentType, ClassInfo, FunctionSignature, IndexedSymbol, MemberReference, ResolvedImport,
-    SourceLocator, SymbolReference, UnresolvedReceiver, UnsupportedExpansion,
+    SourceLocator, SymbolReference, TypeBinding, UnresolvedReceiver, UnsupportedExpansion,
 };
 use crate::config::RuleConfig;
 
@@ -42,6 +42,7 @@ pub(super) struct SymbolCollector<'a> {
     pub(super) symbols: &'a mut Vec<IndexedSymbol>,
     pub(super) imports: &'a mut Vec<ResolvedImport>,
     pub(super) classes: &'a mut Vec<ClassInfo>,
+    pub(super) available_classes: &'a [ClassInfo],
     pub(super) fn_sigs: &'a mut Vec<FunctionSignature>,
     pub(super) call_args: &'a mut Vec<CallArgumentType>,
     pub(super) references: &'a mut Vec<SymbolReference>,

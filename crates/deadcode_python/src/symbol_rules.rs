@@ -4,9 +4,9 @@ use ruff_python_ast as ast;
 use ruff_text_size::TextRange;
 
 use crate::config::RuleConfig;
-use crate::symbol_index::{ImportTarget, ResolvedImport};
+use crate::symbol_index::{ImportTarget, ResolvedImport, TypeBinding};
 
-use super::symbol_types::{type_binding_from_expr, type_name_from_expr, TypeBinding};
+use super::symbol_types::{type_binding_from_expr, type_name_from_expr};
 
 pub(super) fn decorator_registers_function(
     rules: &RuleConfig,
