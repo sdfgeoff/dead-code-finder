@@ -74,7 +74,9 @@ impl SymbolCollector<'_> {
             | "datetime.datetime.fromtimestamp"
             | "datetime.datetime.strptime"
             | "datetime.datetime.combine" => "datetime.datetime",
-            "datetime.date.today" | "datetime.date.fromtimestamp" => "datetime.date",
+            "datetime.date.today"
+            | "datetime.date.fromtimestamp"
+            | "datetime.date.fromisoformat" => "datetime.date",
             "pathlib.Path" => "pathlib.Path",
             _ => return None,
         };

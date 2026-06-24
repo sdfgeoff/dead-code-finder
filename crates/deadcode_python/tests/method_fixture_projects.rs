@@ -12,6 +12,13 @@ fn model_dump_json_if_expression_is_string() {
     assert!(symbols.contains(&"pkg.main.Geometry.unused".to_string()));
 }
 
+#[test]
+fn date_fromisoformat_result_has_year() {
+    let report = analyze_fixture("date_fromisoformat_result_has_year");
+
+    assert!(report.diagnostics.is_empty());
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))
