@@ -78,6 +78,16 @@ fn empty_list_append_infers_list_type() {
     assert!(symbols.contains(&"pkg.main.ExampleItem.unused".to_string()));
 }
 
+#[test]
+fn cast_ifexp_list_comprehension_item_type() {
+    let report = analyze_fixture("cast_ifexp_list_comprehension_item_type");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Polygon.bounds".to_string()));
+    assert!(symbols.contains(&"pkg.main.Polygon.unused".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))

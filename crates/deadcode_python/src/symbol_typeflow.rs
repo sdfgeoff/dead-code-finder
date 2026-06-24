@@ -3,6 +3,10 @@ use std::collections::HashMap;
 use ruff_python_ast as ast;
 
 use super::symbol_aliases::type_alias_type_binding;
+use super::symbol_branch_types::{
+    coalesced_optional_type, compatible_branch_type, is_empty_list_expr,
+    optional_list_or_empty_list_type, optional_list_with_empty_list_type,
+};
 use super::symbol_generics::{expr_type, field_read_type, field_type_for_receiver};
 use super::symbol_rules::{callable_identity, constructor_binding, factory_return_binding};
 use super::symbol_types::type_binding_from_expr;
@@ -422,90 +426,10 @@ impl SymbolCollector<'_> {
     }
 }
 
-fn compatible_branch_type(left: &TypeBinding, right: &TypeBinding) -> Option<TypeBinding> {
-    if left.base == right.base && left.args == right.args && left.external == right.external {
-        return Some(left.clone());
-    }
-    optional_branch_type(left, right)
-        .or_else(|| optional_branch_type(right, left))
-        .or_else(|| optional_value_branch_type(left, right))
-        .or_else(|| optional_value_branch_type(right, left))
-}
-
-fn optional_branch_type(value: &TypeBinding, maybe_none: &TypeBinding) -> Option<TypeBinding> {
-    if !is_none_type(maybe_none) {
-        return None;
-    }
-    if is_optional_type(value) {
-        return Some(value.clone());
-    }
-    Some(TypeBinding {
-        base: "typing.Optional".to_string(),
-        args: vec![value.clone()],
-        external: false,
-    })
-}
-
-fn is_optional_type(binding: &TypeBinding) -> bool {
-    matches!(binding.base.as_str(), "typing.Optional" | "Optional")
-}
-
-fn optional_value_branch_type(optional: &TypeBinding, value: &TypeBinding) -> Option<TypeBinding> {
-    optional_inner_type(optional)
-        .is_some_and(|inner| inner.base == value.base && inner.args == value.args)
-        .then(|| optional.clone())
-}
-
-fn coalesced_optional_type(optional: &TypeBinding, fallback: &TypeBinding) -> Option<TypeBinding> {
-    optional_inner_type(optional)
-        .is_some_and(|inner| inner.base == fallback.base && inner.args == fallback.args)
-        .then(|| fallback.clone())
-}
-
 fn is_datetime_like(binding: &TypeBinding) -> bool {
     matches!(binding.base.as_str(), "datetime.datetime" | "datetime.date")
 }
 
 fn is_timedelta(binding: &TypeBinding) -> bool {
     binding.base == "datetime.timedelta"
-}
-
-fn optional_list_with_empty_list_type(binding: &TypeBinding) -> Option<TypeBinding> {
-    let inner = optional_inner_type(binding)?;
-    is_list_type(&inner.base).then(|| inner.clone())
-}
-
-fn optional_list_or_empty_list_type(
-    optional: &TypeBinding,
-    fallback: &ast::Expr,
-) -> Option<TypeBinding> {
-    is_empty_list_expr(fallback).then(|| optional_list_with_empty_list_type(optional))?
-}
-
-fn is_list_type(type_name: &str) -> bool {
-    matches!(type_name, "list" | "typing.List" | "List") || type_name.ends_with(".list")
-}
-
-fn is_empty_list_expr(expr: &ast::Expr) -> bool {
-    matches!(expr, ast::Expr::List(list) if list.elts.is_empty())
-}
-
-fn is_none_type(binding: &TypeBinding) -> bool {
-    matches!(binding.base.as_str(), "None" | "builtins.None")
-        || binding.base.ends_with(".None")
-        || binding.base.ends_with(".NoneType")
-}
-
-fn optional_inner_type(binding: &TypeBinding) -> Option<&TypeBinding> {
-    if is_optional_type(binding) {
-        return binding.args.first();
-    }
-    if matches!(binding.base.as_str(), "typing.Union" | "types.UnionType") {
-        let mut non_none = binding.args.iter().filter(|arg| !is_none_type(arg));
-        let inner = non_none.next()?;
-        if non_none.next().is_none() {
-            return Some(inner);
-        }
-    }
-    None
 }
