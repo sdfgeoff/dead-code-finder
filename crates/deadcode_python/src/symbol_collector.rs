@@ -34,6 +34,7 @@ use super::{
     SourceLocator, SymbolReference, TypeBinding, UnresolvedReceiver, UnsupportedExpansion,
 };
 use crate::config::RuleConfig;
+use crate::symbol_index::ReexportMap;
 
 pub(super) struct SymbolCollector<'a> {
     pub(super) module: &'a str,
@@ -51,6 +52,7 @@ pub(super) struct SymbolCollector<'a> {
     pub(super) unsupported: &'a mut Vec<UnsupportedExpansion>,
     pub(super) main_entry: &'a mut bool,
     pub(super) known_modules: &'a HashSet<String>,
+    pub(super) reexports: &'a ReexportMap,
     pub(super) rules: &'a RuleConfig,
 }
 
@@ -110,6 +112,7 @@ impl SymbolCollector<'_> {
                     self.locator,
                     self.imports,
                     self.known_modules,
+                    self.reexports,
                     import_from,
                 );
             }

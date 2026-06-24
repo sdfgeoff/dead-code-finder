@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use ruff_python_ast as ast;
 
-use super::super::{ImportTarget, ResolvedImport, SourceLocator};
+use super::super::{ImportTarget, ReexportMap, ResolvedImport, SourceLocator};
 
 pub(super) fn collect_import(
     file: &str,
@@ -37,6 +37,7 @@ pub(super) fn collect_import_from(
     locator: &SourceLocator,
     imports: &mut Vec<ResolvedImport>,
     known_modules: &HashSet<String>,
+    reexports: &ReexportMap,
     import_from: &ast::StmtImportFrom,
 ) {
     let Some(base_module) = resolve_import_from_base(module, import_from) else {
@@ -61,6 +62,10 @@ pub(super) fn collect_import_from(
                     external: false,
                     module: candidate_module,
                 }
+            } else if let Some(target) =
+                reexports.get(&(base_module.clone(), imported_name.to_string()))
+            {
+                target.clone()
             } else {
                 ImportTarget::Symbol {
                     external: base_is_external,

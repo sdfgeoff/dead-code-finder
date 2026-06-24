@@ -1,7 +1,7 @@
 #[path = "symbol_collector.rs"]
 mod symbol_collector;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -11,6 +11,8 @@ use ruff_text_size::TextRange;
 use crate::config::{LoadedProjectConfig, ResolvedRoot, RuleConfig};
 
 use self::symbol_collector::SymbolCollector;
+
+pub(crate) type ReexportMap = HashMap<(String, String), ImportTarget>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SymbolIndex {
@@ -247,12 +249,16 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             &index.known_modules,
             &config.rules,
             &[],
+            &ReexportMap::new(),
             false,
             false,
             false,
         )?;
-        all_classes.extend(module_index.module.classes);
+        all_classes.extend(module_index.module.classes.clone());
+        index.modules.push(module_index.module);
     }
+    let reexports = reexport_map(&index.modules);
+    index.modules.clear();
 
     for (file, module) in &project_files {
         let module_index = index_module(
@@ -261,6 +267,7 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             &index.known_modules,
             &config.rules,
             &all_classes,
+            &reexports,
             is_configured_entrypoint(config, file),
             is_configured_weak_entrypoint(config, file),
             is_test_file(config, file),
@@ -281,6 +288,29 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
     index.known_modules.clear();
 
     Ok(index)
+}
+
+fn reexport_map(modules: &[ModuleIndex]) -> ReexportMap {
+    let mut reexports = ReexportMap::new();
+    for module in modules {
+        for import in &module.imports {
+            if import_target_is_local(&import.target) {
+                reexports.insert(
+                    (module.module.clone(), import.binding.clone()),
+                    import.target.clone(),
+                );
+            }
+        }
+    }
+    reexports
+}
+
+fn import_target_is_local(target: &ImportTarget) -> bool {
+    match target {
+        ImportTarget::Module { external, .. }
+        | ImportTarget::Symbol { external, .. }
+        | ImportTarget::Star { external, .. } => !external,
+    }
 }
 
 fn resolve_route_globs(
@@ -357,6 +387,7 @@ fn index_module(
     known_modules: &HashSet<String>,
     rules: &RuleConfig,
     available_classes: &[ClassInfo],
+    reexports: &ReexportMap,
     is_configured_entrypoint: bool,
     is_configured_weak_entrypoint: bool,
     is_test: bool,
@@ -395,6 +426,7 @@ fn index_module(
                 imports: &mut imports,
                 classes: &mut classes,
                 available_classes,
+                reexports,
                 fn_sigs: &mut function_signatures,
                 call_args: &mut call_argument_types,
                 references: &mut references,

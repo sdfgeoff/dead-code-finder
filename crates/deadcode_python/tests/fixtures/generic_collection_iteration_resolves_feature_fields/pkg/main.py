@@ -1,4 +1,4 @@
-from pkg.models import FeatureCollection, Geometry, Properties
+from pkg.reexported import FeatureCollection, Geometry, Properties
 
 
 def consume(collection: FeatureCollection[int, Geometry, Properties]):
