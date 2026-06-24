@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use ruff_python_ast as ast;
 
+use super::symbol_aliases::type_alias_type_binding;
 use super::symbol_generics::{expr_type, field_read_type, field_type_for_receiver};
 use super::symbol_rules::{callable_identity, constructor_binding, factory_return_binding};
 use super::symbol_types::type_binding_from_expr;
@@ -17,7 +18,8 @@ impl SymbolCollector<'_> {
         value: &ast::Expr,
         types: &HashMap<String, TypeBinding>,
     ) -> Option<TypeBinding> {
-        self.local_call_return_binding(value, types)
+        type_alias_type_binding(self.module, self.imports, value)
+            .or_else(|| self.local_call_return_binding(value, types))
             .or_else(|| self.known_call_result_binding(value))
             .or_else(|| factory_return_binding(self.module, self.imports, self.rules, value))
             .or_else(|| expr_type(self.available_classes, value, types))

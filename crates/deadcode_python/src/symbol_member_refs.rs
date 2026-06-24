@@ -6,7 +6,7 @@ use super::super::AccessKind;
 use super::symbol_generics::{expr_type, member_reference_target_bases};
 use super::symbol_members::push_member_reference;
 use super::SymbolCollector;
-use crate::symbol_index::{ImportTarget, TypeBinding};
+use crate::symbol_index::{ImportTarget, TypeBinding, ValueBinding};
 
 impl SymbolCollector<'_> {
     pub(super) fn collect_member_reference(
@@ -33,6 +33,7 @@ impl SymbolCollector<'_> {
                 .or_else(|| self.local_call_return_binding(value, types)),
         };
         if let Some(receiver_type) = receiver_type {
+            let receiver_type = expand_alias_binding(&receiver_type, self.available_values);
             if receiver_type.external {
                 return;
             }
@@ -61,6 +62,36 @@ impl SymbolCollector<'_> {
                         .span_from_range_string(self.file, attribute.range),
                 });
         }
+    }
+}
+
+fn expand_alias_binding(binding: &TypeBinding, values: &[ValueBinding]) -> TypeBinding {
+    expand_alias_binding_inner(binding, values, &mut Vec::new())
+}
+
+fn expand_alias_binding_inner(
+    binding: &TypeBinding,
+    values: &[ValueBinding],
+    visited: &mut Vec<String>,
+) -> TypeBinding {
+    if visited.iter().any(|visited| visited == &binding.base) {
+        return binding.clone();
+    }
+    if let Some(alias) = values
+        .iter()
+        .find(|value| value.qualified_name == binding.base)
+    {
+        visited.push(binding.base.clone());
+        return expand_alias_binding_inner(&alias.binding, values, visited);
+    }
+    TypeBinding {
+        base: binding.base.clone(),
+        args: binding
+            .args
+            .iter()
+            .map(|arg| expand_alias_binding_inner(arg, values, visited))
+            .collect(),
+        external: binding.external,
     }
 }
 

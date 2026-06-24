@@ -1,3 +1,5 @@
+#[path = "symbol_aliases.rs"]
+mod symbol_aliases;
 #[path = "symbol_construction.rs"]
 mod symbol_construction;
 #[path = "symbol_context.rs"]

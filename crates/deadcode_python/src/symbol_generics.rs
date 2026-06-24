@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use ruff_python_ast as ast;
 
+use super::symbol_expr::target_name;
 use crate::symbol_index::{ClassInfo, FieldAnnotation, TypeBinding};
 
 pub(super) fn field_read_type(
@@ -135,6 +136,7 @@ pub(super) fn expr_type(
                 external: false,
             })
         }
+        ast::Expr::ListComp(list_comp) => list_comprehension_type(classes, list_comp, types),
         ast::Expr::Dict(dict) => dict_type(classes, &dict.items, types),
         ast::Expr::DictComp(dict_comp) => dict_comprehension_type(classes, dict_comp, types),
         ast::Expr::NoneLiteral(_) => Some(TypeBinding::erased("None".to_string())),
@@ -505,6 +507,56 @@ fn dict_comprehension_type(
         ],
         external: false,
     })
+}
+
+fn list_comprehension_type(
+    classes: &[ClassInfo],
+    list_comp: &ast::ExprListComp,
+    types: &HashMap<String, TypeBinding>,
+) -> Option<TypeBinding> {
+    let scoped_types = comprehension_types(classes, &list_comp.generators, types)?;
+    Some(TypeBinding {
+        base: "list".to_string(),
+        args: vec![expr_type(classes, &list_comp.elt, &scoped_types)?],
+        external: false,
+    })
+}
+
+fn comprehension_types(
+    classes: &[ClassInfo],
+    generators: &[ast::Comprehension],
+    types: &HashMap<String, TypeBinding>,
+) -> Option<HashMap<String, TypeBinding>> {
+    let mut scoped_types = types.clone();
+    for generator in generators {
+        let item_type = iterable_item_type(classes, &generator.iter, &scoped_types)?;
+        bind_comprehension_target(&generator.target, &item_type, &mut scoped_types);
+    }
+    Some(scoped_types)
+}
+
+fn bind_comprehension_target(
+    target: &ast::Expr,
+    item_type: &TypeBinding,
+    types: &mut HashMap<String, TypeBinding>,
+) {
+    if let Some(name) = target_name(target) {
+        types.insert(name.to_string(), item_type.clone());
+        return;
+    }
+    let tuple_items = match target {
+        ast::Expr::Tuple(tuple) => &tuple.elts,
+        ast::Expr::List(list) => &list.elts,
+        _ => return,
+    };
+    if item_type.base != "tuple" || item_type.args.len() != tuple_items.len() {
+        return;
+    }
+    for (target_item, binding) in tuple_items.iter().zip(&item_type.args) {
+        if let Some(name) = target_name(target_item) {
+            types.insert(name.to_string(), binding.clone());
+        }
+    }
 }
 
 fn list_item_type(
