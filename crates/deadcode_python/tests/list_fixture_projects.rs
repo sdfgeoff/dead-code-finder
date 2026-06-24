@@ -53,6 +53,20 @@ fn class_field_alias_expands_for_max_item() {
     assert!(symbols.contains(&"pkg.main.Properties.unused".to_string()));
 }
 
+#[test]
+fn local_call_list_comprehension_result_type() {
+    let report = analyze_fixture("local_call_list_comprehension_result_type");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.ExampleInput.category".to_string()));
+    assert!(!symbols.contains(&"pkg.main.ExampleInput.amount".to_string()));
+    assert!(!symbols.contains(&"pkg.main.DimsAndMeasures.dimensions".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Dimensions.category".to_string()));
+    assert!(symbols.contains(&"pkg.main.DimsAndMeasures.unused".to_string()));
+    assert!(symbols.contains(&"pkg.main.Dimensions.unused".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))

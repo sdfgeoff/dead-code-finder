@@ -22,6 +22,7 @@ impl SymbolCollector<'_> {
             .or_else(|| self.local_call_return_binding(value, types))
             .or_else(|| self.known_call_result_binding(value))
             .or_else(|| factory_return_binding(self.module, self.imports, self.rules, value))
+            .or_else(|| self.list_comprehension_flow_binding(value, types))
             .or_else(|| expr_type(self.available_classes, value, types))
             .or_else(|| constructor_binding(self.module, self.imports, self.rules, value))
             .or_else(|| self.local_call_field_read_binding(value, types))
@@ -310,7 +311,7 @@ impl SymbolCollector<'_> {
         }
     }
 
-    fn expression_flow_binding(
+    pub(super) fn expression_flow_binding(
         &self,
         expr: &ast::Expr,
         types: &HashMap<String, TypeBinding>,
