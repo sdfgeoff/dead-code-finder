@@ -9,6 +9,8 @@ use crate::symbol_index::{ImportTarget, ResolvedImport, TypeBinding};
 use super::symbol_types::{type_binding_from_expr, type_name_from_expr};
 
 pub(super) fn decorator_registers_function(
+    module: &str,
+    imports: &[ResolvedImport],
     rules: &RuleConfig,
     expr: &ast::Expr,
     types: &HashMap<String, TypeBinding>,
@@ -16,6 +18,23 @@ pub(super) fn decorator_registers_function(
     let ast::Expr::Call(call) = expr else {
         return false;
     };
+    rules.decorators.iter().any(|rule| {
+        rule.effect == "registerDecoratedFunction"
+            && decorator_matches(rule, call, module, imports, types)
+    })
+}
+
+fn decorator_matches(
+    rule: &crate::config::DecoratorRule,
+    call: &ast::ExprCall,
+    module: &str,
+    imports: &[ResolvedImport],
+    types: &HashMap<String, TypeBinding>,
+) -> bool {
+    if let Some(function) = &rule.function {
+        return callable_identity(module, imports, &call.func).as_deref()
+            == Some(function.as_str());
+    }
     let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
         return false;
     };
@@ -25,14 +44,11 @@ pub(super) fn decorator_registers_function(
     let Some(receiver_type) = types.get(receiver.id.as_str()) else {
         return false;
     };
-    rules.decorators.iter().any(|rule| {
-        rule.effect == "registerDecoratedFunction"
-            && rule.receiver_type == receiver_type.base
-            && rule
-                .methods
-                .iter()
-                .any(|method| method == attribute.attr.as_str())
-    })
+    rule.receiver_type.as_ref() == Some(&receiver_type.base)
+        && rule
+            .methods
+            .iter()
+            .any(|method| method == attribute.attr.as_str())
 }
 
 pub(super) fn constructor_binding(

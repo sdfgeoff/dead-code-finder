@@ -76,7 +76,11 @@ pub struct FactoryReturnRule {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DecoratorRule {
-    pub receiver_type: String,
+    #[serde(default)]
+    pub function: Option<String>,
+    #[serde(default)]
+    pub receiver_type: Option<String>,
+    #[serde(default)]
     pub methods: Vec<String>,
     pub effect: String,
 }
@@ -241,14 +245,33 @@ fn validate_rules(rules: &RuleConfig) -> Result<(), ConfigError> {
         }
     }
     for decorator in &rules.decorators {
-        if decorator.receiver_type.trim().is_empty() {
+        if decorator.function.is_none() && decorator.receiver_type.is_none() {
+            return Err(ConfigError::InvalidRule {
+                message: "decorator rules require function or receiverType plus methods"
+                    .to_string(),
+            });
+        }
+        if decorator
+            .function
+            .as_ref()
+            .is_some_and(|function| function.trim().is_empty())
+        {
+            return Err(ConfigError::InvalidRule {
+                message: "decorator function must not be empty".to_string(),
+            });
+        }
+        if decorator
+            .receiver_type
+            .as_ref()
+            .is_some_and(|receiver_type| receiver_type.trim().is_empty())
+        {
             return Err(ConfigError::InvalidRule {
                 message: "decorator receiverType must not be empty".to_string(),
             });
         }
-        if decorator.methods.is_empty() {
+        if decorator.receiver_type.is_some() && decorator.methods.is_empty() {
             return Err(ConfigError::InvalidRule {
-                message: "decorator methods must not be empty".to_string(),
+                message: "decorator receiverType rules require methods".to_string(),
             });
         }
         if decorator.effect != "registerDecoratedFunction" {

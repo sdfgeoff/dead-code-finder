@@ -130,7 +130,7 @@ impl SymbolCollector<'_> {
                 types.extend(self.function_type_bindings(function, None, module_types));
                 self.push_function_signature(&function_owner, function, &types);
                 self.collect_function_annotation_references(&function_owner, function);
-                self.collect_decorator_rules(function, module_types);
+                self.collect_decorator_rules(self.module, function, module_types);
                 self.collect_function_references(&function_owner, function, types);
             }
             ast::Stmt::ClassDef(class_def) => {
@@ -209,6 +209,8 @@ impl SymbolCollector<'_> {
                     ));
                     self.push_function_signature(&method_owner, function, &types);
                     self.collect_function_annotation_references(&method_owner, function);
+                    let class_owner = format!("{}.{}", self.module, class_name);
+                    self.collect_decorator_rules(&class_owner, function, &types);
                     self.collect_function_references(&method_owner, function, types);
                 }
                 ast::Stmt::AnnAssign(assign) => {
@@ -317,14 +319,30 @@ impl SymbolCollector<'_> {
 
     fn collect_decorator_rules(
         &mut self,
+        owner: &str,
         function: &ast::StmtFunctionDef,
         types: &HashMap<String, TypeBinding>,
     ) {
         for decorator in &function.decorator_list {
-            if decorator_registers_function(self.rules, &decorator.expression, types) {
-                self.push_reference(self.module, function.name.as_str(), decorator.range);
+            if decorator_registers_function(
+                self.module,
+                self.imports,
+                self.rules,
+                &decorator.expression,
+                types,
+            ) {
+                let name = owner.strip_prefix(self.module).and_then(|suffix| {
+                    suffix
+                        .strip_prefix('.')
+                        .map(|class_name| format!("{class_name}.{}", function.name.as_str()))
+                });
+                self.push_reference(
+                    owner,
+                    name.as_deref().unwrap_or(function.name.as_str()),
+                    decorator.range,
+                );
             }
-            self.collect_expr_references(self.module, &decorator.expression, types);
+            self.collect_expr_references(owner, &decorator.expression, types);
         }
     }
 
