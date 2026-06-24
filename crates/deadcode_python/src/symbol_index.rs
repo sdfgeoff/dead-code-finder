@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -11,6 +12,7 @@ use crate::config::{LoadedProjectConfig, ResolvedRoot};
 pub struct SymbolIndex {
     pub modules: Vec<ModuleIndex>,
     pub parse_diagnostics: Vec<ParseDiagnostic>,
+    known_modules: HashSet<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +20,7 @@ pub struct ModuleIndex {
     pub module: String,
     pub file: PathBuf,
     pub symbols: Vec<IndexedSymbol>,
+    pub imports: Vec<ResolvedImport>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +29,30 @@ pub struct IndexedSymbol {
     pub name: String,
     pub kind: SymbolKind,
     pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedImport {
+    pub binding: String,
+    pub target: ImportTarget,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportTarget {
+    Module {
+        module: String,
+        external: bool,
+    },
+    Symbol {
+        module: String,
+        name: String,
+        external: bool,
+    },
+    Star {
+        module: String,
+        external: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,7 +118,18 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
 
         for file in files {
             let module = module_name_for_file(root, &file);
-            let module_index = index_module(&module, &file)?;
+            index.known_modules.insert(module);
+        }
+    }
+
+    for root in &config.roots {
+        let mut files = Vec::new();
+        collect_python_files(&root.path, &mut files)?;
+        files.sort();
+
+        for file in files {
+            let module = module_name_for_file(root, &file);
+            let module_index = index_module(&module, &file, &index.known_modules)?;
             index
                 .parse_diagnostics
                 .extend(module_index.parse_diagnostics);
@@ -104,6 +142,8 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             .cmp(&right.module)
             .then_with(|| left.file.cmp(&right.file))
     });
+
+    index.known_modules.clear();
 
     Ok(index)
 }
@@ -145,7 +185,11 @@ struct IndexedModuleResult {
     parse_diagnostics: Vec<ParseDiagnostic>,
 }
 
-fn index_module(module: &str, file: &Path) -> Result<IndexedModuleResult, SymbolIndexError> {
+fn index_module(
+    module: &str,
+    file: &Path,
+    known_modules: &HashSet<String>,
+) -> Result<IndexedModuleResult, SymbolIndexError> {
     let source = fs::read_to_string(file).map_err(|source| SymbolIndexError::ReadFile {
         path: file.to_path_buf(),
         source,
@@ -158,6 +202,7 @@ fn index_module(module: &str, file: &Path) -> Result<IndexedModuleResult, Symbol
         kind: SymbolKind::Module,
         span: SourceSpan::new(file_display.clone(), 1, 1),
     }];
+    let mut imports = Vec::new();
     let mut parse_diagnostics = Vec::new();
 
     match ruff_python_parser::parse_module(&source) {
@@ -168,6 +213,8 @@ fn index_module(module: &str, file: &Path) -> Result<IndexedModuleResult, Symbol
                 file: &file_display,
                 locator: &locator,
                 symbols: &mut symbols,
+                imports: &mut imports,
+                known_modules,
             };
             collector.collect_suite(suite);
         }
@@ -186,6 +233,7 @@ fn index_module(module: &str, file: &Path) -> Result<IndexedModuleResult, Symbol
             module: module.to_string(),
             file: file.to_path_buf(),
             symbols,
+            imports,
         },
         parse_diagnostics,
     })
@@ -196,6 +244,8 @@ struct SymbolCollector<'a> {
     file: &'a str,
     locator: &'a SourceLocator,
     symbols: &'a mut Vec<IndexedSymbol>,
+    imports: &'a mut Vec<ResolvedImport>,
+    known_modules: &'a HashSet<String>,
 }
 
 impl SymbolCollector<'_> {
@@ -224,6 +274,57 @@ impl SymbolCollector<'_> {
                     class_def.range,
                 );
                 self.collect_class_body(class_name, &class_def.body);
+            }
+            ast::Stmt::Import(import) => {
+                for alias in &import.names {
+                    let target_module = alias.name.as_str().to_string();
+                    let binding = alias
+                        .asname
+                        .as_ref()
+                        .map_or_else(|| first_module_segment(&target_module), ToString::to_string);
+                    self.push_import(
+                        binding,
+                        ImportTarget::Module {
+                            external: !self.known_modules.contains(&target_module),
+                            module: target_module,
+                        },
+                        import.range,
+                    );
+                }
+            }
+            ast::Stmt::ImportFrom(import_from) => {
+                let Some(base_module) = self.resolve_import_from_base(import_from) else {
+                    return;
+                };
+                let base_is_external = !self.known_modules.contains(&base_module);
+                for alias in &import_from.names {
+                    let imported_name = alias.name.as_str();
+                    let binding = alias
+                        .asname
+                        .as_ref()
+                        .map_or_else(|| imported_name.to_string(), ToString::to_string);
+                    let target = if imported_name == "*" {
+                        ImportTarget::Star {
+                            external: base_is_external,
+                            module: base_module.clone(),
+                        }
+                    } else {
+                        let candidate_module = format!("{base_module}.{imported_name}");
+                        if self.known_modules.contains(&candidate_module) {
+                            ImportTarget::Module {
+                                external: false,
+                                module: candidate_module,
+                            }
+                        } else {
+                            ImportTarget::Symbol {
+                                external: base_is_external,
+                                module: base_module.clone(),
+                                name: imported_name.to_string(),
+                            }
+                        }
+                    };
+                    self.push_import(binding, target, import_from.range);
+                }
             }
             _ => {}
         }
@@ -327,6 +428,37 @@ impl SymbolCollector<'_> {
             span: self.locator.span_from_range_string(self.file, range),
         });
     }
+
+    fn push_import(&mut self, binding: String, target: ImportTarget, range: TextRange) {
+        self.imports.push(ResolvedImport {
+            binding,
+            target,
+            span: self.locator.span_from_range_string(self.file, range),
+        });
+    }
+
+    fn resolve_import_from_base(&self, import_from: &ast::StmtImportFrom) -> Option<String> {
+        let imported_module = import_from.module.as_ref().map(ast::Identifier::as_str);
+        if import_from.level == 0 {
+            return imported_module.map(ToString::to_string);
+        }
+
+        let mut parts = self.module.split('.').collect::<Vec<_>>();
+        parts.pop();
+        let ancestor_count = import_from.level.saturating_sub(1) as usize;
+        if ancestor_count > parts.len() {
+            return None;
+        }
+        parts.truncate(parts.len() - ancestor_count);
+        if let Some(imported_module) = imported_module {
+            parts.extend(imported_module.split('.'));
+        }
+        Some(parts.join("."))
+    }
+}
+
+fn first_module_segment(module: &str) -> String {
+    module.split('.').next().unwrap_or(module).to_string()
 }
 
 fn target_name(expr: &ast::Expr) -> Option<&str> {
@@ -478,6 +610,102 @@ class ExampleEntity:
             .contains("could not parse"));
     }
 
+    #[test]
+    fn resolves_absolute_and_relative_local_imports() {
+        let workspace = test_workspace("resolves_absolute_and_relative_local_imports");
+        let package = workspace.join("pkg");
+        fs::create_dir_all(package.join("sub")).unwrap();
+        fs::write(package.join("__init__.py"), "").unwrap();
+        fs::write(package.join("helpers.py"), "def help_me():\n    pass\n").unwrap();
+        fs::write(package.join("sub/__init__.py"), "").unwrap();
+        fs::write(
+            package.join("sub/feature.py"),
+            "import pkg.helpers as helpers\nfrom ..helpers import help_me\n",
+        )
+        .unwrap();
+        let config = loaded_config(&workspace, vec![root(&package, "pkg")]);
+
+        let index = index_project(&config).unwrap();
+        let feature = module(&index, "pkg.sub.feature");
+
+        assert_eq!(feature.imports.len(), 2);
+        assert_eq!(feature.imports[0].binding, "helpers");
+        assert_eq!(
+            feature.imports[0].target,
+            ImportTarget::Module {
+                module: "pkg.helpers".to_string(),
+                external: false
+            }
+        );
+        assert_eq!(feature.imports[1].binding, "help_me");
+        assert_eq!(
+            feature.imports[1].target,
+            ImportTarget::Symbol {
+                module: "pkg.helpers".to_string(),
+                name: "help_me".to_string(),
+                external: false
+            }
+        );
+    }
+
+    #[test]
+    fn preserves_external_import_identities() {
+        let workspace = test_workspace("preserves_external_import_identities");
+        let package = workspace.join("pkg");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("app.py"),
+            "from fastapi import APIRouter\nimport pydantic.fields\n",
+        )
+        .unwrap();
+        let config = loaded_config(&workspace, vec![root(&package, "pkg")]);
+
+        let index = index_project(&config).unwrap();
+        let app = module(&index, "pkg.app");
+
+        assert_eq!(app.imports.len(), 2);
+        assert_eq!(app.imports[0].binding, "APIRouter");
+        assert_eq!(
+            app.imports[0].target,
+            ImportTarget::Symbol {
+                module: "fastapi".to_string(),
+                name: "APIRouter".to_string(),
+                external: true
+            }
+        );
+        assert_eq!(app.imports[1].binding, "pydantic");
+        assert_eq!(
+            app.imports[1].target,
+            ImportTarget::Module {
+                module: "pydantic.fields".to_string(),
+                external: true
+            }
+        );
+    }
+
+    #[test]
+    fn resolves_imported_submodule_before_symbol() {
+        let workspace = test_workspace("resolves_imported_submodule_before_symbol");
+        let package = workspace.join("pkg");
+        fs::create_dir_all(package.join("models")).unwrap();
+        fs::write(package.join("__init__.py"), "").unwrap();
+        fs::write(package.join("models/__init__.py"), "").unwrap();
+        fs::write(package.join("models/entity.py"), "class ExampleEntity:\n    pass\n").unwrap();
+        fs::write(package.join("consumer.py"), "from pkg.models import entity\n").unwrap();
+        let config = loaded_config(&workspace, vec![root(&package, "pkg")]);
+
+        let index = index_project(&config).unwrap();
+        let consumer = module(&index, "pkg.consumer");
+
+        assert_eq!(
+            consumer.imports[0].target,
+            ImportTarget::Module {
+                module: "pkg.models.entity".to_string(),
+                external: false
+            }
+        );
+    }
+
     fn loaded_config(workspace: &Path, roots: Vec<ResolvedRoot>) -> LoadedProjectConfig {
         LoadedProjectConfig {
             config_path: workspace.join("dead-code-finder.json"),
@@ -494,6 +722,14 @@ class ExampleEntity:
             path: path.to_path_buf(),
             module: module.to_string(),
         }
+    }
+
+    fn module<'a>(index: &'a SymbolIndex, name: &str) -> &'a ModuleIndex {
+        index
+            .modules
+            .iter()
+            .find(|module| module.module == name)
+            .unwrap()
     }
 
     fn test_workspace(name: &str) -> PathBuf {
