@@ -45,6 +45,7 @@ pub(super) fn bind_collection_unpack_target(
     collection_type: &TypeBinding,
     types: &mut HashMap<String, TypeBinding>,
 ) {
+    let collection_type = non_none_union_member(collection_type).unwrap_or(collection_type);
     let tuple_items = match target {
         ast::Expr::Tuple(tuple) => &tuple.elts,
         ast::Expr::List(list) => &list.elts,
@@ -70,4 +71,22 @@ pub(super) fn bind_collection_unpack_target(
 
 fn is_tuple_type(type_name: &str) -> bool {
     matches!(type_name, "tuple" | "typing.Tuple" | "Tuple") || type_name.ends_with(".tuple")
+}
+
+fn non_none_union_member(binding: &TypeBinding) -> Option<&TypeBinding> {
+    if !matches!(
+        binding.base.as_str(),
+        "typing.Union" | "types.UnionType" | "typing.Optional" | "Optional"
+    ) {
+        return None;
+    }
+    let mut non_none = binding.args.iter().filter(|arg| !is_none_type(&arg.base));
+    let member = non_none.next()?;
+    non_none.next().is_none().then_some(member)
+}
+
+fn is_none_type(type_name: &str) -> bool {
+    matches!(type_name, "None" | "builtins.None")
+        || type_name.ends_with(".None")
+        || type_name.ends_with(".NoneType")
 }
