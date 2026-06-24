@@ -4,7 +4,7 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use crate::config::{LoadedProjectConfig, ResolvedRoot};
+    use crate::config::{ConstructorRule, LoadedProjectConfig, ResolvedRoot, RuleConfig};
     use crate::symbol_index::index_project;
 
     use super::*;
@@ -151,6 +151,132 @@ run()
 
         assert!(!symbols.contains(&"pkg.main.ExampleEntity.save".to_string()));
         assert!(symbols.contains(&"pkg.main.Other.save".to_string()));
+    }
+
+    #[test]
+    fn construction_marks_init_method_live() {
+        let workspace = test_workspace("construction_marks_init_method_live");
+        let package = workspace.join("pkg");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("main.py"),
+            r#"
+class ExampleEntity:
+    def __init__(self):
+        pass
+
+class Other:
+    def __init__(self):
+        pass
+
+def run():
+    ExampleEntity()
+
+run()
+"#,
+        )
+        .unwrap();
+        let config = loaded_config(
+            &workspace,
+            vec![root(&package, "pkg")],
+            vec!["pkg/main.py".to_string()],
+        );
+
+        let index = index_project(&config).unwrap();
+        let findings = find_unused_symbols(&index);
+        let symbols = finding_symbols(&findings);
+
+        assert!(!symbols.contains(&"pkg.main.ExampleEntity.__init__".to_string()));
+        assert!(symbols.contains(&"pkg.main.Other.__init__".to_string()));
+    }
+
+    #[test]
+    fn functions_can_use_module_level_typed_bindings() {
+        let workspace = test_workspace("functions_can_use_module_level_typed_bindings");
+        let package = workspace.join("pkg");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("main.py"),
+            r#"
+class Config:
+    value: str
+
+def get_config() -> Config:
+    return Config()
+
+config = get_config()
+
+def run():
+    return config.value
+
+run()
+"#,
+        )
+        .unwrap();
+        let mut config = loaded_config(
+            &workspace,
+            vec![root(&package, "pkg")],
+            vec!["pkg/main.py".to_string()],
+        );
+        config.rules = RuleConfig {
+            constructors: vec![ConstructorRule {
+                match_: "pkg.main.get_config".to_string(),
+                produces_type: "pkg.main.Config".to_string(),
+            }],
+            ..RuleConfig::default()
+        };
+
+        let index = index_project(&config).unwrap();
+        let findings = find_unused_symbols(&index);
+        let symbols = finding_symbols(&findings);
+
+        assert!(!symbols.contains(&"pkg.main.Config.value".to_string()));
+    }
+
+    #[test]
+    fn self_attributes_assigned_from_typed_init_parameters_resolve_nested_calls() {
+        let workspace = test_workspace(
+            "self_attributes_assigned_from_typed_init_parameters_resolve_nested_calls",
+        );
+        let package = workspace.join("pkg");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("main.py"),
+            r#"
+class Client:
+    def live(self):
+        pass
+
+    def dead(self):
+        pass
+
+class Service:
+    def __init__(self, client: Client):
+        self.client = client
+
+    def run(self):
+        self.client.live()
+
+def main():
+    service = Service(Client())
+    service.run()
+
+main()
+"#,
+        )
+        .unwrap();
+        let config = loaded_config(
+            &workspace,
+            vec![root(&package, "pkg")],
+            vec!["pkg/main.py".to_string()],
+        );
+
+        let index = index_project(&config).unwrap();
+        let findings = find_unused_symbols(&index);
+        let symbols = finding_symbols(&findings);
+
+        assert!(!symbols.contains(&"pkg.main.Client.live".to_string()));
+        assert!(symbols.contains(&"pkg.main.Client.dead".to_string()));
     }
 
     #[test]
@@ -575,7 +701,7 @@ live()
             entrypoints,
             include_tests: false,
             test_patterns: Vec::new(),
-            rules: crate::config::RuleConfig::default(),
+            rules: RuleConfig::default(),
         }
     }
 

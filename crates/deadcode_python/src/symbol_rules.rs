@@ -41,15 +41,12 @@ pub(super) fn constructor_binding(
     rules: &RuleConfig,
     expr: &ast::Expr,
 ) -> Option<TypeBinding> {
-    constructor_type_name(module, imports, expr)
+    let ast::Expr::Call(call) = expr else {
+        return None;
+    };
+    constructed_type_from_callee(module, imports, rules, &call.func)
+        .or_else(|| constructor_type_name(module, imports, expr))
         .map(TypeBinding::erased)
-        .or_else(|| {
-            let ast::Expr::Call(call) = expr else {
-                return None;
-            };
-            constructed_type_from_callee(module, imports, rules, &call.func)
-                .map(TypeBinding::erased)
-        })
 }
 
 pub(super) fn constructed_type_from_callee(
@@ -58,14 +55,17 @@ pub(super) fn constructed_type_from_callee(
     rules: &RuleConfig,
     callee: &ast::Expr,
 ) -> Option<String> {
-    type_name_from_expr(module, imports, callee).or_else(|| {
-        let callable = callable_identity(module, imports, callee)?;
-        rules
-            .constructors
-            .iter()
-            .find(|rule| rule.match_ == callable)
-            .map(|rule| rule.produces_type.clone())
-    })
+    let callable = callable_identity(module, imports, callee);
+    callable
+        .as_deref()
+        .and_then(|callable| {
+            rules
+                .constructors
+                .iter()
+                .find(|rule| rule.match_ == callable)
+                .map(|rule| rule.produces_type.clone())
+        })
+        .or_else(|| type_name_from_expr(module, imports, callee))
 }
 
 pub(super) fn callable_identity(

@@ -1,4 +1,5 @@
 use std::env;
+use std::io::{self, ErrorKind, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -26,9 +27,16 @@ fn main() -> ExitCode {
     };
     let summary = report.summary();
 
-    match options.format {
+    let print_result = match options.format {
         OutputFormat::Text => print_text_report(&report, summary),
         OutputFormat::Json => print_json_report(&report, summary),
+    };
+    if let Err(error) = print_result {
+        if error.kind() == ErrorKind::BrokenPipe {
+            return ExitCode::SUCCESS;
+        }
+        eprintln!("dead-code-finder: failed to write output: {error}");
+        return ExitCode::from(2);
     }
 
     if report.is_clean() && !(options.strict && !report.diagnostics.is_empty()) {
@@ -100,18 +108,21 @@ fn print_usage() {
     );
 }
 
-fn print_text_report(report: &AnalysisReport, summary: ReportSummary) {
+fn print_text_report(report: &AnalysisReport, summary: ReportSummary) -> io::Result<()> {
+    let stdout = io::stdout();
+    let mut writer = stdout.lock();
     for diagnostic in &report.diagnostics {
-        print_diagnostic(diagnostic);
+        print_diagnostic(&mut writer, diagnostic)?;
     }
     for finding in &report.findings {
-        print_finding(finding);
+        print_finding(&mut writer, finding)?;
     }
 
-    println!(
+    writeln!(
+        writer,
         "dead-code-finder: {} finding(s), {} diagnostic(s)",
         summary.findings, summary.diagnostics
-    );
+    )
 }
 
 #[derive(Serialize)]
@@ -121,24 +132,29 @@ struct JsonReport<'a> {
     summary: ReportSummary,
 }
 
-fn print_json_report(report: &AnalysisReport, summary: ReportSummary) {
+fn print_json_report(report: &AnalysisReport, summary: ReportSummary) -> io::Result<()> {
     let json = JsonReport {
         findings: &report.findings,
         diagnostics: &report.diagnostics,
         summary,
     };
-    println!("{}", serde_json::to_string_pretty(&json).unwrap());
+    let stdout = io::stdout();
+    let mut writer = stdout.lock();
+    serde_json::to_writer_pretty(&mut writer, &json).unwrap();
+    writeln!(writer)
 }
 
-fn print_finding(finding: &Finding) {
-    println!(
+fn print_finding(writer: &mut impl Write, finding: &Finding) -> io::Result<()> {
+    writeln!(
+        writer,
         "{}:{}:{} {} {}",
         finding.span.file, finding.span.line, finding.span.column, finding.code, finding.message
-    );
+    )
 }
 
-fn print_diagnostic(diagnostic: &Diagnostic) {
-    println!(
+fn print_diagnostic(writer: &mut impl Write, diagnostic: &Diagnostic) -> io::Result<()> {
+    writeln!(
+        writer,
         "{}:{}:{} {} {}: {}",
         diagnostic.span.file,
         diagnostic.span.line,
@@ -146,7 +162,7 @@ fn print_diagnostic(diagnostic: &Diagnostic) {
         diagnostic.code,
         severity_label(&diagnostic.severity),
         diagnostic.message
-    );
+    )
 }
 
 fn severity_label(severity: &Severity) -> &'static str {

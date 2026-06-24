@@ -10,6 +10,8 @@ mod symbol_imports;
 mod symbol_members;
 #[path = "symbol_metadata.rs"]
 mod symbol_metadata;
+#[path = "symbol_references.rs"]
+mod symbol_references;
 #[path = "symbol_rules.rs"]
 mod symbol_rules;
 #[path = "symbol_types.rs"]
@@ -19,23 +21,17 @@ use std::collections::{HashMap, HashSet};
 
 use deadcode_core::SymbolKind;
 use ruff_python_ast as ast;
-use ruff_text_size::{Ranged, TextRange};
+use ruff_text_size::TextRange;
 
 use self::symbol_expr::{is_main_guard, target_name};
 use self::symbol_fields::collect_self_assignments;
-use self::symbol_generics::field_read_type;
 use self::symbol_imports::{collect_import, collect_import_from};
-use self::symbol_members::push_member_reference;
 use self::symbol_metadata::{class_info, function_signature};
-use self::symbol_rules::{
-    callable_argument_references, callable_identity, constructed_type_from_callee,
-    constructor_binding, decorator_registers_function,
-};
+use self::symbol_rules::decorator_registers_function;
 use self::symbol_types::{type_binding_from_expr, TypeBinding};
 use super::{
-    AccessKind, CallArgumentType, ClassInfo, FunctionSignature, ImportTarget, IndexedSymbol,
-    MemberReference, ResolvedImport, SourceLocator, SymbolReference, UnresolvedReceiver,
-    UnsupportedExpansion,
+    CallArgumentType, ClassInfo, FunctionSignature, IndexedSymbol, MemberReference, ResolvedImport,
+    SourceLocator, SymbolReference, UnresolvedReceiver, UnsupportedExpansion,
 };
 use crate::config::RuleConfig;
 
@@ -81,7 +77,8 @@ impl SymbolCollector<'_> {
                 );
                 self.push_function_signature(&function_owner, function);
                 self.collect_decorator_rules(function, module_types);
-                let types = self.function_type_bindings(function, None);
+                let mut types = module_types.clone();
+                types.extend(self.function_type_bindings(function, None));
                 self.collect_function_references(&function_owner, function, types);
             }
             ast::Stmt::ClassDef(class_def) => {
@@ -93,7 +90,7 @@ impl SymbolCollector<'_> {
                     class_def.range,
                 );
                 self.push_class_info(format!("{}.{}", self.module, class_name), class_def);
-                self.collect_class_body(class_name, &class_def.body);
+                self.collect_class_body(class_name, &class_def.body, module_types);
             }
             ast::Stmt::Import(import) => {
                 collect_import(
@@ -124,7 +121,12 @@ impl SymbolCollector<'_> {
         }
     }
 
-    fn collect_class_body(&mut self, class_name: &str, body: &[ast::Stmt]) {
+    fn collect_class_body(
+        &mut self,
+        class_name: &str,
+        body: &[ast::Stmt],
+        module_types: &HashMap<String, TypeBinding>,
+    ) {
         for statement in body {
             match statement {
                 ast::Stmt::FunctionDef(function) => {
@@ -145,7 +147,8 @@ impl SymbolCollector<'_> {
                         class_name,
                         &function.body,
                     );
-                    let types = self.function_type_bindings(function, Some(class_name));
+                    let mut types = module_types.clone();
+                    types.extend(self.function_type_bindings(function, Some(class_name)));
                     self.collect_function_references(&method_owner, function, types);
                 }
                 ast::Stmt::AnnAssign(assign) => {
@@ -241,199 +244,6 @@ impl SymbolCollector<'_> {
         }
     }
 
-    fn collect_statement_references(
-        &mut self,
-        owner: &str,
-        statement: &ast::Stmt,
-        types: &mut HashMap<String, TypeBinding>,
-    ) {
-        match statement {
-            ast::Stmt::FunctionDef(function) => {
-                let function_owner = format!("{}.{}", self.module, function.name.as_str());
-                let types = self.function_type_bindings(function, None);
-                self.collect_function_references(&function_owner, function, types);
-            }
-            ast::Stmt::ClassDef(_) => {}
-            ast::Stmt::Expr(expr) => self.collect_expr_references(owner, &expr.value, types),
-            ast::Stmt::Return(ret) => {
-                if let Some(value) = &ret.value {
-                    self.collect_expr_references(owner, value, types);
-                }
-            }
-            ast::Stmt::Assign(assign) => {
-                self.collect_expr_references(owner, &assign.value, types);
-                for target in &assign.targets {
-                    self.collect_assignment_target(owner, target, types);
-                }
-                if let Some(type_name) =
-                    constructor_binding(self.module, self.imports, self.rules, &assign.value)
-                {
-                    for target in &assign.targets {
-                        if let Some(name) = target_name(target) {
-                            types.insert(name.to_string(), type_name.clone());
-                        }
-                    }
-                }
-                if let Some(field_type) = field_read_type(self.classes, &assign.value, types) {
-                    for target in &assign.targets {
-                        if let Some(name) = target_name(target) {
-                            types.insert(name.to_string(), field_type.clone());
-                        }
-                    }
-                }
-            }
-            ast::Stmt::AnnAssign(assign) => {
-                if let Some(name) = target_name(&assign.target) {
-                    if let Some(type_name) =
-                        type_binding_from_expr(self.module, self.imports, &assign.annotation)
-                    {
-                        types.insert(name.to_string(), type_name);
-                    }
-                } else {
-                    self.collect_assignment_target(owner, &assign.target, types);
-                }
-                if let Some(value) = &assign.value {
-                    self.collect_expr_references(owner, value, types);
-                }
-            }
-            ast::Stmt::If(if_stmt) => {
-                self.collect_expr_references(owner, &if_stmt.test, types);
-                for nested in &if_stmt.body {
-                    self.collect_statement_references(owner, nested, types);
-                }
-                for clause in &if_stmt.elif_else_clauses {
-                    if let Some(test) = &clause.test {
-                        self.collect_expr_references(owner, test, types);
-                    }
-                    for nested in &clause.body {
-                        self.collect_statement_references(owner, nested, types);
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    fn collect_expr_references(
-        &mut self,
-        owner: &str,
-        expr: &ast::Expr,
-        types: &HashMap<String, TypeBinding>,
-    ) {
-        match expr {
-            ast::Expr::Name(name) => self.push_reference(owner, name.id.as_str(), name.range),
-            ast::Expr::Call(call) => self.collect_call_references(owner, call, types),
-            ast::Expr::Attribute(attribute) => {
-                self.collect_member_reference(owner, attribute, AccessKind::Read, types);
-                self.collect_expr_references(owner, &attribute.value, types);
-            }
-            ast::Expr::BinOp(bin_op) => {
-                self.collect_expr_references(owner, &bin_op.left, types);
-                self.collect_expr_references(owner, &bin_op.right, types);
-            }
-            ast::Expr::Compare(compare) => {
-                self.collect_expr_references(owner, &compare.left, types);
-                for comparator in compare.comparators.iter() {
-                    self.collect_expr_references(owner, comparator, types);
-                }
-            }
-            ast::Expr::BoolOp(bool_op) => {
-                for value in &bool_op.values {
-                    self.collect_expr_references(owner, value, types);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    fn collect_call_references(
-        &mut self,
-        owner: &str,
-        call: &ast::ExprCall,
-        types: &HashMap<String, TypeBinding>,
-    ) {
-        if let ast::Expr::Attribute(attribute) = call.func.as_ref() {
-            self.collect_member_reference(owner, attribute, AccessKind::Call, types);
-            self.collect_expr_references(owner, &attribute.value, types);
-        } else {
-            self.collect_expr_references(owner, &call.func, types);
-        }
-
-        let callee = callable_identity(self.module, self.imports, &call.func);
-        for (name, range) in
-            callable_argument_references(self.rules, call, callee.as_deref(), types)
-        {
-            self.push_reference(owner, &name, range);
-        }
-        for (position, arg) in call.arguments.args.iter().enumerate() {
-            if let (Some(callee), Some(concrete_type)) = (
-                callee.as_ref(),
-                constructor_binding(self.module, self.imports, self.rules, arg),
-            ) {
-                self.call_args.push(CallArgumentType {
-                    from: owner.to_string(),
-                    callee: callee.clone(),
-                    position,
-                    concrete_type: concrete_type.base,
-                    span: self.locator.span_from_range_string(self.file, arg.range()),
-                });
-            }
-            self.collect_expr_references(owner, arg, types);
-        }
-        let constructor_type =
-            constructed_type_from_callee(self.module, self.imports, self.rules, &call.func);
-        for keyword in &call.arguments.keywords {
-            self.collect_expr_references(owner, &keyword.value, types);
-            let Some(constructor_type) = constructor_type.as_ref() else {
-                continue;
-            };
-            if let Some(arg) = &keyword.arg {
-                push_member_reference(
-                    self.member_refs,
-                    self.locator,
-                    self.file,
-                    owner,
-                    format!("{constructor_type}.{}", arg.as_str()),
-                    AccessKind::Construct,
-                    keyword.range,
-                );
-            } else {
-                self.unsupported.push(UnsupportedExpansion {
-                    from: owner.to_string(),
-                    target: constructor_type.clone(),
-                    span: self
-                        .locator
-                        .span_from_range_string(self.file, keyword.range),
-                });
-            }
-        }
-    }
-
-    fn collect_assignment_target(
-        &mut self,
-        owner: &str,
-        target: &ast::Expr,
-        types: &HashMap<String, TypeBinding>,
-    ) {
-        match target {
-            ast::Expr::Attribute(attribute) => {
-                self.collect_member_reference(owner, attribute, AccessKind::Write, types);
-                self.collect_expr_references(owner, &attribute.value, types);
-            }
-            ast::Expr::Tuple(tuple) => {
-                for element in &tuple.elts {
-                    self.collect_assignment_target(owner, element, types);
-                }
-            }
-            ast::Expr::List(list) => {
-                for element in &list.elts {
-                    self.collect_assignment_target(owner, element, types);
-                }
-            }
-            _ => {}
-        }
-    }
-
     fn function_type_bindings(
         &self,
         function: &ast::StmtFunctionDef,
@@ -461,43 +271,5 @@ impl SymbolCollector<'_> {
             }
         }
         types
-    }
-
-    fn collect_member_reference(
-        &mut self,
-        owner: &str,
-        attribute: &ast::ExprAttribute,
-        access: AccessKind,
-        types: &HashMap<String, TypeBinding>,
-    ) {
-        let ast::Expr::Name(receiver) = attribute.value.as_ref() else {
-            return;
-        };
-        let receiver_name = receiver.id.as_str();
-        if self.imports.iter().any(|import| {
-            import.binding == receiver_name && matches!(import.target, ImportTarget::Module { .. })
-        }) {
-            return;
-        }
-        if let Some(receiver_type) = types.get(receiver_name) {
-            push_member_reference(
-                self.member_refs,
-                self.locator,
-                self.file,
-                owner,
-                format!("{}.{}", receiver_type.base, attribute.attr.as_str()),
-                access,
-                attribute.range,
-            );
-        } else {
-            self.unresolved_receivers.push(UnresolvedReceiver {
-                from: owner.to_string(),
-                receiver: receiver_name.to_string(),
-                member: attribute.attr.as_str().to_string(),
-                span: self
-                    .locator
-                    .span_from_range_string(self.file, attribute.range),
-            });
-        }
     }
 }

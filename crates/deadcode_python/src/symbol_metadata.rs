@@ -4,6 +4,7 @@ use crate::symbol_index::{
     ClassFieldInfo, ClassInfo, FieldAnnotation, FunctionSignature, ResolvedImport,
 };
 
+use super::symbol_expr::self_attribute_name;
 use super::symbol_types::type_name_from_expr;
 
 pub(super) fn class_info(
@@ -77,7 +78,7 @@ fn class_fields(
     class_def: &ast::StmtClassDef,
     type_params: &[String],
 ) -> Vec<ClassFieldInfo> {
-    class_def
+    let mut fields = class_def
         .body
         .iter()
         .filter_map(|statement| {
@@ -91,7 +92,71 @@ fn class_fields(
                 annotation,
             })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    for field in init_self_fields(module, imports, class_def) {
+        if !fields.iter().any(|existing| existing.name == field.name) {
+            fields.push(field);
+        }
+    }
+    fields
+}
+
+fn init_self_fields(
+    module: &str,
+    imports: &[ResolvedImport],
+    class_def: &ast::StmtClassDef,
+) -> Vec<ClassFieldInfo> {
+    class_def
+        .body
+        .iter()
+        .find_map(|statement| {
+            let ast::Stmt::FunctionDef(function) = statement else {
+                return None;
+            };
+            (function.name.as_str() == "__init__").then_some(function)
+        })
+        .map(|function| {
+            let parameter_types = function
+                .parameters
+                .iter()
+                .filter_map(|parameter| {
+                    let parameter = parameter.as_parameter();
+                    let annotation = parameter.annotation()?;
+                    let type_name = type_name_from_expr(module, imports, annotation)?;
+                    Some((parameter.name.as_str().to_string(), type_name))
+                })
+                .collect::<Vec<_>>();
+            function
+                .body
+                .iter()
+                .filter_map(|statement| init_self_field(statement, &parameter_types))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn init_self_field(
+    statement: &ast::Stmt,
+    parameter_types: &[(String, String)],
+) -> Option<ClassFieldInfo> {
+    let ast::Stmt::Assign(assign) = statement else {
+        return None;
+    };
+    if assign.targets.len() != 1 {
+        return None;
+    }
+    let target = assign.targets.first()?;
+    let field_name = self_attribute_name(target)?;
+    let ast::Expr::Name(value) = assign.value.as_ref() else {
+        return None;
+    };
+    let (_, type_name) = parameter_types
+        .iter()
+        .find(|(parameter, _)| parameter == value.id.as_str())?;
+    Some(ClassFieldInfo {
+        name: field_name.to_string(),
+        annotation: FieldAnnotation::Concrete(type_name.clone()),
+    })
 }
 
 fn field_annotation(
