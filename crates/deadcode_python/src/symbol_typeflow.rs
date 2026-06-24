@@ -147,8 +147,19 @@ impl SymbolCollector<'_> {
         if bool_op.op != ast::BoolOp::Or || bool_op.values.len() != 2 {
             return None;
         }
-        let left = self.expression_flow_binding(&bool_op.values[0], types)?;
-        let right = self.expression_flow_binding(&bool_op.values[1], types)?;
+        let left = self.expression_flow_binding(&bool_op.values[0], types);
+        if let Some(left) = &left {
+            if let Some(binding) = optional_list_or_empty_list_type(left, &bool_op.values[1]) {
+                return Some(binding);
+            }
+        }
+        let right = self.expression_flow_binding(&bool_op.values[1], types);
+        if let Some(right) = &right {
+            if let Some(binding) = optional_list_or_empty_list_type(right, &bool_op.values[0]) {
+                return Some(binding);
+            }
+        }
+        let (left, right) = (left?, right?);
         coalesced_optional_type(&left, &right).or_else(|| coalesced_optional_type(&right, &left))
     }
 
@@ -396,6 +407,13 @@ fn is_timedelta(binding: &TypeBinding) -> bool {
 fn optional_list_with_empty_list_type(binding: &TypeBinding) -> Option<TypeBinding> {
     let inner = optional_inner_type(binding)?;
     is_list_type(&inner.base).then(|| inner.clone())
+}
+
+fn optional_list_or_empty_list_type(
+    optional: &TypeBinding,
+    fallback: &ast::Expr,
+) -> Option<TypeBinding> {
+    is_empty_list_expr(fallback).then(|| optional_list_with_empty_list_type(optional))?
 }
 
 fn is_list_type(type_name: &str) -> bool {

@@ -162,6 +162,16 @@ fn optional_list_ifexp_empty_list_binds_list_type() {
 }
 
 #[test]
+fn optional_list_bool_or_empty_list_binds_item_type() {
+    let report = analyze_fixture("optional_list_bool_or_empty_list_binds_item_type");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.BaseProperties.class_labels".to_string()));
+    assert!(symbols.contains(&"pkg.main.Properties.unused".to_string()));
+}
+
+#[test]
 fn bool_or_coalesce_resolves_optional_field_type() {
     let report = analyze_fixture("bool_or_coalesce_resolves_optional_field_type");
     let symbols = finding_symbols(&report);

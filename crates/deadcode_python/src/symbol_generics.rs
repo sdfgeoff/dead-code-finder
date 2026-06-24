@@ -29,7 +29,7 @@ pub(super) fn field_read_type(
     else {
         return union_field_read_type(classes, &receiver_type, attribute.attr.as_str());
     };
-    class_field_type(class_info, &receiver_type, attribute.attr.as_str())
+    class_or_base_field_type(classes, class_info, &receiver_type, attribute.attr.as_str())
 }
 
 fn union_field_read_type(
@@ -55,7 +55,7 @@ fn field_type_for_class(
     let class_info = classes
         .iter()
         .find(|class_info| class_info.class == receiver_type.base)?;
-    class_field_type(class_info, receiver_type, field_name)
+    class_or_base_field_type(classes, class_info, receiver_type, field_name)
 }
 
 pub(super) fn field_type_for_receiver(
@@ -73,7 +73,23 @@ pub(super) fn field_type_for_receiver(
     let class_info = classes
         .iter()
         .find(|class_info| class_info.class == receiver_type.base)?;
-    class_field_type(class_info, receiver_type, field_name)
+    class_or_base_field_type(classes, class_info, receiver_type, field_name)
+}
+
+fn class_or_base_field_type(
+    classes: &[ClassInfo],
+    class_info: &ClassInfo,
+    receiver_type: &TypeBinding,
+    field_name: &str,
+) -> Option<TypeBinding> {
+    class_field_type(class_info, receiver_type, field_name).or_else(|| {
+        class_info.bases.iter().find_map(|base| {
+            let base_info = classes
+                .iter()
+                .find(|class_info| class_info.class == base.base)?;
+            class_or_base_field_type(classes, base_info, base, field_name)
+        })
+    })
 }
 
 fn class_field_type(
