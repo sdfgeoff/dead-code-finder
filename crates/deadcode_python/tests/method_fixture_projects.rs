@@ -56,6 +56,15 @@ fn type_adapter_validate_python_returns_generic_arg() {
     assert!(symbols.contains(&"pkg.models.BaseEvent.unused_base".to_string()));
 }
 
+#[test]
+fn list_slice_preserves_collection_type() {
+    let report = analyze_fixture("list_slice_preserves_collection_type");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(symbols.contains(&"pkg.main.dead".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))

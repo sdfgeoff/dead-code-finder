@@ -58,6 +58,8 @@ mod symbol_typeflow;
 mod symbol_types;
 #[path = "symbol_typevars.rs"]
 mod symbol_typevars;
+#[path = "symbol_value_bindings.rs"]
+mod symbol_value_bindings;
 
 use std::collections::{HashMap, HashSet};
 

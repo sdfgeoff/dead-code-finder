@@ -126,7 +126,12 @@ pub(super) fn expr_type(
         ast::Expr::Name(name) => types.get(name.id.as_str()).cloned(),
         ast::Expr::Attribute(_) => field_read_type(classes, expr, types),
         ast::Expr::Subscript(subscript) => {
-            collection_item_type(&expr_type(classes, &subscript.value, types)?)
+            let collection_type = expr_type(classes, &subscript.value, types)?;
+            if matches!(subscript.slice.as_ref(), ast::Expr::Slice(_)) {
+                Some(collection_type)
+            } else {
+                collection_item_type(&collection_type)
+            }
         }
         ast::Expr::Await(await_expr) => expr_type(classes, &await_expr.value, types),
         ast::Expr::Call(call) => builtin_constructor_call_type(classes, call, types)

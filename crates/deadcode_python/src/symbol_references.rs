@@ -252,6 +252,9 @@ impl SymbolCollector<'_> {
             ast::Expr::Await(await_expr) => {
                 self.collect_expr_references(owner, &await_expr.value, types);
             }
+            ast::Expr::Starred(starred) => {
+                self.collect_expr_references(owner, &starred.value, types);
+            }
             ast::Expr::If(if_expr) => {
                 self.collect_expr_references(owner, &if_expr.test, types);
                 let (body_types, orelse_types) = self.branch_type_bindings(&if_expr.test, types);
@@ -409,54 +412,5 @@ impl SymbolCollector<'_> {
             .iter()
             .any(|class_info| class_info.class == same_module)
             .then(|| TypeBinding::erased(same_module))
-    }
-
-    pub(super) fn push_imported_value_bindings(
-        &mut self,
-        types: &mut HashMap<String, TypeBinding>,
-        import_start: usize,
-    ) {
-        let imports = &self.imports[import_start..];
-        for import in imports {
-            let Some(qualified_name) = import_value_qualified_name(&import.target) else {
-                continue;
-            };
-            let Some(binding) = self
-                .available_values
-                .iter()
-                .find(|value| value.qualified_name == qualified_name)
-                .map(|value| expand_alias_binding(&value.binding, self.available_values))
-            else {
-                continue;
-            };
-            types.insert(import.binding.clone(), binding);
-        }
-    }
-
-    fn push_value_binding(&mut self, name: &str, binding: TypeBinding) {
-        let qualified_name = format!("{}.{}", self.module, name);
-        if let Some(existing) = self
-            .value_bindings
-            .iter_mut()
-            .find(|value| value.qualified_name == qualified_name)
-        {
-            existing.binding = binding;
-            return;
-        }
-        self.value_bindings.push(crate::symbol_index::ValueBinding {
-            qualified_name,
-            binding,
-        });
-    }
-}
-
-fn import_value_qualified_name(target: &ImportTarget) -> Option<String> {
-    match target {
-        ImportTarget::Symbol {
-            module,
-            name,
-            external: false,
-        } => Some(format!("{module}.{name}")),
-        _ => None,
     }
 }
