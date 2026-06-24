@@ -170,9 +170,18 @@ impl SymbolCollector<'_> {
         let ast::Expr::If(if_expr) = expr else {
             return None;
         };
-        let body = self.expression_flow_binding(&if_expr.body, types)?;
-        let orelse = self.expression_flow_binding(&if_expr.orelse, types)?;
-        compatible_branch_type(&body, &orelse)
+        let body = self.expression_flow_binding(&if_expr.body, types);
+        let orelse = self.expression_flow_binding(&if_expr.orelse, types);
+        match (body, orelse) {
+            (Some(body), Some(orelse)) => compatible_branch_type(&body, &orelse),
+            (Some(body), None) if is_empty_list_expr(&if_expr.orelse) => {
+                optional_list_with_empty_list_type(&body)
+            }
+            (None, Some(orelse)) if is_empty_list_expr(&if_expr.body) => {
+                optional_list_with_empty_list_type(&orelse)
+            }
+            _ => None,
+        }
     }
 
     fn expression_flow_binding(
@@ -328,10 +337,37 @@ fn coalesced_optional_type(optional: &TypeBinding, fallback: &TypeBinding) -> Op
         .then(|| fallback.clone())
 }
 
+fn optional_list_with_empty_list_type(binding: &TypeBinding) -> Option<TypeBinding> {
+    let inner = optional_inner_type(binding)?;
+    is_list_type(&inner.base).then(|| inner.clone())
+}
+
+fn is_list_type(type_name: &str) -> bool {
+    matches!(type_name, "list" | "typing.List" | "List") || type_name.ends_with(".list")
+}
+
+fn is_empty_list_expr(expr: &ast::Expr) -> bool {
+    matches!(expr, ast::Expr::List(list) if list.elts.is_empty())
+}
+
 fn is_none_type(binding: &TypeBinding) -> bool {
     matches!(binding.base.as_str(), "None" | "builtins.None")
         || binding.base.ends_with(".None")
         || binding.base.ends_with(".NoneType")
+}
+
+fn optional_inner_type(binding: &TypeBinding) -> Option<&TypeBinding> {
+    if is_optional_type(binding) {
+        return binding.args.first();
+    }
+    if matches!(binding.base.as_str(), "typing.Union" | "types.UnionType") {
+        let mut non_none = binding.args.iter().filter(|arg| !is_none_type(arg));
+        let inner = non_none.next()?;
+        if non_none.next().is_none() {
+            return Some(inner);
+        }
+    }
+    None
 }
 
 fn type_var_from_type_argument(annotation: Option<&TypeBinding>) -> Option<&str> {

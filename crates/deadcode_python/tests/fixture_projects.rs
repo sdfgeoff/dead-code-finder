@@ -150,6 +150,18 @@ fn optional_ifexp_resolves_guarded_field_reads() {
 }
 
 #[test]
+fn optional_list_ifexp_empty_list_binds_list_type() {
+    let report = analyze_fixture("optional_list_ifexp_empty_list_binds_list_type");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Process.message_items".to_string()));
+    assert!(!symbols.contains(&"pkg.main.ExampleMessage.to".to_string()));
+    assert!(symbols.contains(&"pkg.main.ExampleMessage.unused".to_string()));
+    assert!(symbols.contains(&"pkg.main.Process.unused".to_string()));
+}
+
+#[test]
 fn bool_or_coalesce_resolves_optional_field_type() {
     let report = analyze_fixture("bool_or_coalesce_resolves_optional_field_type");
     let symbols = finding_symbols(&report);
