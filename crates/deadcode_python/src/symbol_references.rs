@@ -4,7 +4,7 @@ use ruff_python_ast as ast;
 use ruff_text_size::Ranged;
 
 use super::symbol_expr::target_name;
-use super::symbol_generics::{field_read_type, iterable_item_type};
+use super::symbol_generics::{expr_type, field_read_type, iterable_item_type};
 use super::symbol_members::push_member_reference;
 use super::symbol_rules::{
     callable_argument_references, callable_identity, constructed_type_from_callee,
@@ -43,7 +43,7 @@ impl SymbolCollector<'_> {
                 }
                 if let Some(mut type_name) =
                     constructor_binding(self.module, self.imports, self.rules, &assign.value)
-                        .or_else(|| field_read_type(self.available_classes, &assign.value, types))
+                        .or_else(|| expr_type(self.available_classes, &assign.value, types))
                         .or_else(|| self.local_call_return_binding(&assign.value, types))
                         .or_else(|| self.external_call_result_binding(&assign.value, types))
                 {
@@ -179,6 +179,9 @@ impl SymbolCollector<'_> {
                 self.collect_expr_references(owner, &subscript.value, types);
                 self.collect_expr_references(owner, &subscript.slice, types);
             }
+            ast::Expr::Await(await_expr) => {
+                self.collect_expr_references(owner, &await_expr.value, types);
+            }
             ast::Expr::Tuple(tuple) => {
                 for element in &tuple.elts {
                     self.collect_expr_references(owner, element, types);
@@ -311,6 +314,9 @@ impl SymbolCollector<'_> {
         types: &HashMap<String, TypeBinding>,
     ) -> Option<TypeBinding> {
         let ast::Expr::Call(call) = expr else {
+            if let ast::Expr::Await(await_expr) = expr {
+                return self.local_call_return_binding(&await_expr.value, types);
+            }
             return None;
         };
         let ast::Expr::Attribute(attribute) = call.func.as_ref() else {

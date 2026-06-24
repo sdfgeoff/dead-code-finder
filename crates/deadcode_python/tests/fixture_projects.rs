@@ -101,6 +101,18 @@ fn local_return_annotations_resolve_call_results() {
 }
 
 #[test]
+fn awaited_mapping_subscript_resolves_generic_item_fields() {
+    let report = analyze_fixture("awaited_mapping_subscript_resolves_generic_item_fields");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.models.Feature.geometry".to_string()));
+    assert!(!symbols.contains(&"pkg.models.Feature.properties".to_string()));
+    assert!(!symbols.contains(&"pkg.models.Properties.name".to_string()));
+    assert!(symbols.contains(&"pkg.models.Properties.unused".to_string()));
+}
+
+#[test]
 fn scripts_inheritance_generics_and_unresolved_receivers_are_reported() {
     let report = analyze_fixture("scripts_inheritance_generics_and_unresolved_receivers");
     let symbols = finding_symbols(&report);

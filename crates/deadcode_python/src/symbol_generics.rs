@@ -12,10 +12,10 @@ pub(super) fn field_read_type(
     let ast::Expr::Attribute(attribute) = expr else {
         return None;
     };
-    let ast::Expr::Name(receiver) = attribute.value.as_ref() else {
-        return None;
-    };
-    let receiver_type = types.get(receiver.id.as_str())?;
+    let receiver_type = match attribute.value.as_ref() {
+        ast::Expr::Name(receiver) => types.get(receiver.id.as_str()).cloned(),
+        expr => expr_type(classes, expr, types),
+    }?;
     let class_info = classes
         .iter()
         .find(|class_info| class_info.class == receiver_type.base)?;
@@ -25,8 +25,24 @@ pub(super) fn field_read_type(
         .find(|field| field.name == attribute.attr.as_str())?;
     match &field.annotation {
         FieldAnnotation::Concrete(binding) => {
-            Some(substitute_type_params(binding, class_info, receiver_type))
+            Some(substitute_type_params(binding, class_info, &receiver_type))
         }
+    }
+}
+
+pub(super) fn expr_type(
+    classes: &[ClassInfo],
+    expr: &ast::Expr,
+    types: &HashMap<String, TypeBinding>,
+) -> Option<TypeBinding> {
+    match expr {
+        ast::Expr::Name(name) => types.get(name.id.as_str()).cloned(),
+        ast::Expr::Attribute(_) => field_read_type(classes, expr, types),
+        ast::Expr::Subscript(subscript) => {
+            collection_item_type(&expr_type(classes, &subscript.value, types)?)
+        }
+        ast::Expr::Await(await_expr) => expr_type(classes, &await_expr.value, types),
+        _ => None,
     }
 }
 
@@ -35,14 +51,7 @@ pub(super) fn iterable_item_type(
     expr: &ast::Expr,
     types: &HashMap<String, TypeBinding>,
 ) -> Option<TypeBinding> {
-    let iterable_type = field_read_type(classes, expr, types).or_else(|| match expr {
-        ast::Expr::Name(name) => types.get(name.id.as_str()).cloned(),
-        _ => None,
-    })?;
-    if is_iterable_collection(&iterable_type.base) {
-        return iterable_type.args.first().cloned();
-    }
-    None
+    collection_item_type(&expr_type(classes, expr, types)?)
 }
 
 fn substitute_type_params(
@@ -85,4 +94,18 @@ fn is_iterable_collection(type_name: &str) -> bool {
     ) || type_name.ends_with(".list")
         || type_name.ends_with(".set")
         || type_name.ends_with(".tuple")
+}
+
+fn collection_item_type(collection_type: &TypeBinding) -> Option<TypeBinding> {
+    if is_mapping_collection(&collection_type.base) {
+        return collection_type.args.get(1).cloned();
+    }
+    if is_iterable_collection(&collection_type.base) {
+        return collection_type.args.first().cloned();
+    }
+    None
+}
+
+fn is_mapping_collection(type_name: &str) -> bool {
+    matches!(type_name, "dict" | "typing.Dict" | "typing.Mapping") || type_name.ends_with(".dict")
 }
