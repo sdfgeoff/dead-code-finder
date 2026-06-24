@@ -10,7 +10,7 @@ use super::symbol_expr::target_name;
 use super::symbol_imports::{collect_import, collect_import_from};
 use super::symbol_iteration::{bind_collection_unpack_target, bind_iteration_target};
 use super::symbol_members::push_member_reference;
-use super::symbol_rules::{callable_argument_references, callable_identity, constructor_binding};
+use super::symbol_rules::{callable_argument_references, callable_identity};
 use super::symbol_types::type_binding_from_expr;
 use super::SymbolCollector;
 use crate::symbol_index::{
@@ -318,7 +318,7 @@ impl SymbolCollector<'_> {
         }
         self.collect_pydantic_validation_field_references(owner, call, types);
         for (position, arg) in call.arguments.args.iter().enumerate() {
-            let concrete_types = self.concrete_argument_types(arg);
+            let concrete_types = self.concrete_argument_types(arg, types);
             for concrete_type in concrete_types {
                 let Some(callee) = &flow_callee else {
                     continue;
@@ -355,6 +355,21 @@ impl SymbolCollector<'_> {
             if self.collect_max_key_lambda_references(owner, call, keyword, types) {
                 continue;
             }
+            if let (Some(callee), Some(arg)) = (&flow_callee, &keyword.arg) {
+                if let Some(position) = self.keyword_argument_position(callee, arg.as_str()) {
+                    for concrete_type in self.concrete_argument_types(&keyword.value, types) {
+                        self.call_args.push(CallArgumentType {
+                            from: owner.to_string(),
+                            callee: callee.clone(),
+                            position,
+                            concrete_type,
+                            span: self
+                                .locator
+                                .span_from_range_string(self.file, keyword.value.range()),
+                        });
+                    }
+                }
+            }
             self.collect_expr_references(owner, &keyword.value, types);
             let Some((constructor_type, is_type_parameter)) = constructor.as_ref() else {
                 continue;
@@ -389,13 +404,6 @@ impl SymbolCollector<'_> {
         }
     }
 
-    fn class_object_argument_binding(&self, expr: &ast::Expr) -> Option<TypeBinding> {
-        match expr {
-            ast::Expr::Name(name) => self.class_object_binding(name.id.as_str()),
-            _ => None,
-        }
-    }
-
     pub(super) fn class_object_binding(&self, receiver_name: &str) -> Option<TypeBinding> {
         for import in self.imports.iter() {
             if import.binding != receiver_name {
@@ -427,24 +435,5 @@ impl SymbolCollector<'_> {
             .iter()
             .any(|class_info| class_info.class == callee)
             .then(|| format!("{callee}.__init__"))
-    }
-
-    fn concrete_argument_types(&self, arg: &ast::Expr) -> Vec<String> {
-        if let Some(binding) = constructor_binding(self.module, self.imports, self.rules, arg)
-            .or_else(|| self.class_object_argument_binding(arg))
-        {
-            return vec![binding.base];
-        }
-        let ast::Expr::List(list) = arg else {
-            return Vec::new();
-        };
-        list.elts
-            .iter()
-            .filter_map(|element| {
-                constructor_binding(self.module, self.imports, self.rules, element)
-                    .or_else(|| self.class_object_argument_binding(element))
-                    .map(|binding| binding.base)
-            })
-            .collect()
     }
 }

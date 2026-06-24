@@ -29,6 +29,7 @@ impl SymbolCollector<'_> {
             .or_else(|| self.known_call_result_binding(value))
             .or_else(|| self.pydantic_validation_call_binding(value, types))
             .or_else(|| factory_return_binding(self.module, self.imports, self.rules, value))
+            .or_else(|| self.tuple_literal_flow_binding(value, types))
             .or_else(|| self.list_literal_flow_binding(value, types))
             .or_else(|| self.list_comprehension_flow_binding(value, types))
             .or_else(|| self.dict_comprehension_flow_binding(value, types))
@@ -312,8 +313,29 @@ impl SymbolCollector<'_> {
             .or_else(|| self.known_call_result_binding(expr))
             .or_else(|| self.pydantic_validation_call_binding(expr, types))
             .or_else(|| constructor_binding(self.module, self.imports, self.rules, expr))
+            .or_else(|| self.tuple_literal_flow_binding(expr, types))
             .or_else(|| self.list_literal_flow_binding(expr, types))
             .or_else(|| expr_type(self.available_classes, expr, types))
+    }
+
+    fn tuple_literal_flow_binding(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        let ast::Expr::Tuple(tuple) = expr else {
+            return None;
+        };
+        let args = tuple
+            .elts
+            .iter()
+            .map(|element| self.expression_flow_binding(element, types))
+            .collect::<Option<Vec<_>>>()?;
+        Some(TypeBinding {
+            base: "tuple".to_string(),
+            args,
+            external: false,
+        })
     }
 
     fn mapping_method_call_binding(

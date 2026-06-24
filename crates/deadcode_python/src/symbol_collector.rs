@@ -8,6 +8,8 @@ mod symbol_assignment_target;
 mod symbol_branch_narrowing;
 #[path = "symbol_branch_types.rs"]
 mod symbol_branch_types;
+#[path = "symbol_call_args.rs"]
+mod symbol_call_args;
 #[path = "symbol_comprehension_narrowing.rs"]
 mod symbol_comprehension_narrowing;
 #[path = "symbol_comprehension_typeflow.rs"]
@@ -72,6 +74,7 @@ use ruff_text_size::TextRange;
 use self::symbol_expr::{is_main_guard, target_name};
 use self::symbol_fields::collect_self_assignments;
 use self::symbol_imports::{collect_import, collect_import_from};
+use self::symbol_iteration::bind_collection_unpack_target;
 use self::symbol_metadata::{class_info, function_signature};
 use self::symbol_rules::decorator_registers_function;
 use self::symbol_types::type_binding_from_annotation_expr;
@@ -280,9 +283,16 @@ impl SymbolCollector<'_> {
         types: &HashMap<String, TypeBinding>,
     ) {
         let mut signature = function_signature(self.module, self.imports, function, function_def);
-        if signature.return_type.is_none() {
-            signature.return_type = self.inferred_function_return(function_def, types);
-        }
+        let inferred = self.inferred_function_return(function_def, types);
+        signature.return_type = match (signature.return_type, inferred) {
+            (None, inferred) => inferred,
+            (Some(explicit), Some(inferred))
+                if is_tuple_binding(&explicit) && is_tuple_binding(&inferred) =>
+            {
+                Some(inferred)
+            }
+            (explicit, _) => explicit,
+        };
         self.fn_sigs.push(signature);
     }
 
@@ -292,21 +302,50 @@ impl SymbolCollector<'_> {
         types: &HashMap<String, TypeBinding>,
     ) -> Option<TypeBinding> {
         let mut inferred = None;
+        let mut scoped_types = types.clone();
         for statement in &function_def.body {
-            let ast::Stmt::Return(return_stmt) = statement else {
-                continue;
-            };
-            let Some(value) = &return_stmt.value else {
-                return None;
-            };
-            let binding = self.assignment_value_binding(value, types)?;
-            if inferred
-                .as_ref()
-                .is_some_and(|existing: &TypeBinding| existing != &binding)
-            {
-                return None;
+            match statement {
+                ast::Stmt::Assign(assign) => {
+                    let Some(binding) = self.assignment_value_binding(&assign.value, &scoped_types)
+                    else {
+                        continue;
+                    };
+                    for target in &assign.targets {
+                        if let Some(name) = target_name(target) {
+                            scoped_types.insert(name.to_string(), binding.clone());
+                        } else {
+                            bind_collection_unpack_target(target, &binding, &mut scoped_types);
+                        }
+                    }
+                }
+                ast::Stmt::AnnAssign(assign) => {
+                    let Some(name) = target_name(&assign.target) else {
+                        continue;
+                    };
+                    let Some(annotation) = type_binding_from_annotation_expr(
+                        self.module,
+                        self.imports,
+                        &assign.annotation,
+                    ) else {
+                        continue;
+                    };
+                    scoped_types.insert(name.to_string(), annotation);
+                }
+                ast::Stmt::Return(return_stmt) => {
+                    let Some(value) = &return_stmt.value else {
+                        return None;
+                    };
+                    let binding = self.assignment_value_binding(value, &scoped_types)?;
+                    if inferred
+                        .as_ref()
+                        .is_some_and(|existing: &TypeBinding| existing != &binding)
+                    {
+                        return None;
+                    }
+                    inferred = Some(binding);
+                }
+                _ => {}
             }
-            inferred = Some(binding);
         }
         inferred
     }
@@ -421,6 +460,11 @@ impl SymbolCollector<'_> {
         }
         types
     }
+}
+
+fn is_tuple_binding(binding: &TypeBinding) -> bool {
+    matches!(binding.base.as_str(), "tuple" | "typing.Tuple" | "Tuple")
+        || binding.base.ends_with(".tuple")
 }
 
 fn type_binding_from_annotation(
