@@ -311,6 +311,14 @@ impl SymbolCollector<'_> {
                     AccessKind::Construct,
                     keyword.range,
                 );
+            } else if self.expand_model_dump_keyword(
+                owner,
+                constructor_type,
+                &keyword.value,
+                types,
+                keyword.range,
+            ) {
+                continue;
             } else if !is_type_parameter {
                 self.unsupported.push(UnsupportedExpansion {
                     from: owner.to_string(),

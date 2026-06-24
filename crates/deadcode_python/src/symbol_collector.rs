@@ -2,6 +2,8 @@
 mod symbol_construction;
 #[path = "symbol_context.rs"]
 mod symbol_context;
+#[path = "symbol_expansion.rs"]
+mod symbol_expansion;
 #[path = "symbol_expr.rs"]
 mod symbol_expr;
 #[path = "symbol_external.rs"]

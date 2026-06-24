@@ -25,6 +25,17 @@ class Stats:
     unused: int
 
 
+class DumpSource:
+    keep: str
+    skip: str
+
+
+class DumpTarget:
+    keep: str
+    skip: str
+    extra: int
+
+
 def total(features: Sequence[Feature[PropertiesType]]) -> list[PropertiesType]:
     feature_list = list(features)
     return [feature.properties for feature in feature_list]
@@ -68,8 +79,13 @@ def stats_from_payload(stats_cls: type[StatsType], payload: dict[str, object]) -
     return stats_cls(**payload, amount=1.0)
 
 
+def target_from_dump(source: DumpSource) -> DumpTarget:
+    return DumpTarget(**source.model_dump(exclude={"skip"}), extra=1)
+
+
 total_area([])
 flattened_area([])
 zipped_area([])
 optional_nested_overlap([])
 stats_from_payload(Stats, {})
+target_from_dump(DumpSource())
