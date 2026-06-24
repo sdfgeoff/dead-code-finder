@@ -121,6 +121,7 @@ pub(super) fn expr_type(
         }
         ast::Expr::Await(await_expr) => expr_type(classes, &await_expr.value, types),
         ast::Expr::Call(call) => builtin_constructor_call_type(classes, call, types)
+            .or_else(|| zip_call_type(classes, call, types))
             .or_else(|| mapping_items_call_type(classes, call, types))
             .or_else(|| mapping_value_call_type(classes, call, types))
             .or_else(|| builtin_method_call_type(classes, call, types))
@@ -151,6 +152,37 @@ pub(super) fn iterable_item_type(
     types: &HashMap<String, TypeBinding>,
 ) -> Option<TypeBinding> {
     collection_item_type(&expr_type(classes, expr, types)?)
+}
+
+fn zip_call_type(
+    classes: &[ClassInfo],
+    call: &ast::ExprCall,
+    types: &HashMap<String, TypeBinding>,
+) -> Option<TypeBinding> {
+    let ast::Expr::Name(name) = call.func.as_ref() else {
+        return None;
+    };
+    if name.id.as_str() != "zip" || call.arguments.args.is_empty() {
+        return None;
+    }
+    let tuple_args = call
+        .arguments
+        .args
+        .iter()
+        .map(|arg| {
+            iterable_item_type(classes, arg, types)
+                .unwrap_or_else(|| TypeBinding::erased("object".to_string()))
+        })
+        .collect();
+    Some(TypeBinding {
+        base: "list".to_string(),
+        args: vec![TypeBinding {
+            base: "tuple".to_string(),
+            args: tuple_args,
+            external: false,
+        }],
+        external: false,
+    })
 }
 
 pub(super) fn member_reference_target_bases(receiver_type: &TypeBinding) -> Vec<String> {

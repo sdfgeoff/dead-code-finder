@@ -29,5 +29,17 @@ def flattened_area(areas: list[AreaWithScheme]) -> float:
     return areas[0]
 
 
+def zipped_area(features: Sequence[Feature[Properties]]) -> float:
+    feature_list = list(features)
+    areas = [1.0 for feature in feature_list]
+    rounded_areas = [2.0 for feature in feature_list]
+    results = [
+        rounded_area if feature.properties.amount > 0 else area
+        for feature, area, rounded_area in zip(feature_list, areas, rounded_areas)
+    ]
+    return results[0]
+
+
 total_area([])
 flattened_area([])
+zipped_area([])
