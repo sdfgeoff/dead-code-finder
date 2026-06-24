@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use ruff_python_ast as ast;
 use ruff_text_size::Ranged;
 
+use super::symbol_branch_narrowing::{merge_completed_branch_types, suite_returns};
 use super::symbol_construction::constructed_type_for_call;
 use super::symbol_expr::target_name;
 use super::symbol_imports::{collect_import, collect_import_from};
@@ -104,6 +105,10 @@ impl SymbolCollector<'_> {
                 for nested in &if_stmt.body {
                     self.collect_statement_references(owner, nested, &mut body_types);
                 }
+                let mut completed_branches = Vec::new();
+                if !suite_returns(&if_stmt.body) {
+                    completed_branches.push(body_types);
+                }
                 for clause in &if_stmt.elif_else_clauses {
                     if let Some(test) = &clause.test {
                         self.collect_expr_references(owner, test, &remaining_types);
@@ -112,13 +117,20 @@ impl SymbolCollector<'_> {
                         for nested in &clause.body {
                             self.collect_statement_references(owner, nested, &mut clause_types);
                         }
+                        if !suite_returns(&clause.body) {
+                            completed_branches.push(clause_types);
+                        }
                         remaining_types = next_remaining;
                         continue;
                     }
                     for nested in &clause.body {
                         self.collect_statement_references(owner, nested, &mut remaining_types);
                     }
+                    if !suite_returns(&clause.body) {
+                        completed_branches.push(remaining_types.clone());
+                    }
                 }
+                merge_completed_branch_types(types, completed_branches);
             }
             ast::Stmt::With(with_stmt) => {
                 for item in &with_stmt.items {
@@ -365,31 +377,6 @@ impl SymbolCollector<'_> {
         match expr {
             ast::Expr::Name(name) => self.class_object_binding(name.id.as_str()),
             _ => None,
-        }
-    }
-
-    fn collect_assignment_target(
-        &mut self,
-        owner: &str,
-        target: &ast::Expr,
-        types: &HashMap<String, TypeBinding>,
-    ) {
-        match target {
-            ast::Expr::Attribute(attribute) => {
-                self.collect_member_reference(owner, attribute, AccessKind::Write, types);
-                self.collect_expr_references(owner, &attribute.value, types);
-            }
-            ast::Expr::Tuple(tuple) => {
-                for element in &tuple.elts {
-                    self.collect_assignment_target(owner, element, types);
-                }
-            }
-            ast::Expr::List(list) => {
-                for element in &list.elts {
-                    self.collect_assignment_target(owner, element, types);
-                }
-            }
-            _ => {}
         }
     }
 

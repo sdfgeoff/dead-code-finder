@@ -2,6 +2,8 @@
 mod symbol_aliases;
 #[path = "symbol_append.rs"]
 mod symbol_append;
+#[path = "symbol_assignment_target.rs"]
+mod symbol_assignment_target;
 #[path = "symbol_branch_narrowing.rs"]
 mod symbol_branch_narrowing;
 #[path = "symbol_branch_types.rs"]
@@ -34,6 +36,8 @@ mod symbol_interpolation;
 mod symbol_iteration;
 #[path = "symbol_lambda.rs"]
 mod symbol_lambda;
+#[path = "symbol_mapping_types.rs"]
+mod symbol_mapping_types;
 #[path = "symbol_member_refs.rs"]
 mod symbol_member_refs;
 #[path = "symbol_members.rs"]

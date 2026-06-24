@@ -207,3 +207,29 @@ fn is_none_type(type_name: &str) -> bool {
         || type_name.ends_with(".None")
         || type_name.ends_with(".NoneType")
 }
+
+pub(super) fn suite_returns(body: &[ast::Stmt]) -> bool {
+    body.iter()
+        .any(|statement| matches!(statement, ast::Stmt::Return(_)))
+}
+
+pub(super) fn merge_completed_branch_types(
+    types: &mut HashMap<String, TypeBinding>,
+    branches: Vec<HashMap<String, TypeBinding>>,
+) {
+    let Some(first) = branches.first() else {
+        return;
+    };
+    let keys = first.keys().cloned().collect::<Vec<_>>();
+    for key in keys {
+        let Some(binding) = first.get(&key) else {
+            continue;
+        };
+        if branches
+            .iter()
+            .all(|branch| branch.get(&key) == Some(binding))
+        {
+            types.insert(key, binding.clone());
+        }
+    }
+}

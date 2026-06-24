@@ -4,6 +4,10 @@ use ruff_python_ast as ast;
 
 use super::symbol_comprehension_narrowing::apply_isinstance_narrowing;
 use super::symbol_expr::{expr_type_key, target_name};
+use super::symbol_mapping_types::{
+    is_mapping_collection, mapping_items_call_type, mapping_value_call_type,
+    mapping_values_call_type,
+};
 use crate::symbol_index::{ClassInfo, FieldAnnotation, TypeBinding};
 
 pub(super) fn field_read_type(
@@ -128,6 +132,7 @@ pub(super) fn expr_type(
         ast::Expr::Call(call) => builtin_constructor_call_type(classes, call, types)
             .or_else(|| zip_call_type(classes, call, types))
             .or_else(|| enumerate_call_type(classes, call, types))
+            .or_else(|| sorted_call_type(classes, call, types))
             .or_else(|| max_call_type(classes, call, types))
             .or_else(|| mapping_items_call_type(classes, call, types))
             .or_else(|| mapping_values_call_type(classes, call, types))
@@ -217,6 +222,29 @@ fn enumerate_call_type(
             args: vec![TypeBinding::erased("int".to_string()), item_type],
             external: false,
         }],
+        external: false,
+    })
+}
+
+fn sorted_call_type(
+    classes: &[ClassInfo],
+    call: &ast::ExprCall,
+    types: &HashMap<String, TypeBinding>,
+) -> Option<TypeBinding> {
+    let ast::Expr::Name(name) = call.func.as_ref() else {
+        return None;
+    };
+    if name.id.as_str() != "sorted" {
+        return None;
+    }
+    let item_type = call
+        .arguments
+        .args
+        .first()
+        .and_then(|arg| iterable_item_type(classes, arg, types))?;
+    Some(TypeBinding {
+        base: "list".to_string(),
+        args: vec![item_type],
         external: false,
     })
 }
@@ -359,72 +387,6 @@ fn builtin_constructor_call_type(
     .then(|| TypeBinding::erased(name.id.as_str().to_string()))
 }
 
-fn mapping_items_call_type(
-    classes: &[ClassInfo],
-    call: &ast::ExprCall,
-    types: &HashMap<String, TypeBinding>,
-) -> Option<TypeBinding> {
-    let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
-        return None;
-    };
-    if attribute.attr.as_str() != "items" {
-        return None;
-    }
-    let receiver_type = expr_type(classes, &attribute.value, types)?;
-    if !is_mapping_collection(&receiver_type.base) {
-        return None;
-    }
-    Some(TypeBinding {
-        base: "list".to_string(),
-        args: vec![TypeBinding {
-            base: "tuple".to_string(),
-            args: receiver_type.args,
-            external: false,
-        }],
-        external: false,
-    })
-}
-
-fn mapping_value_call_type(
-    classes: &[ClassInfo],
-    call: &ast::ExprCall,
-    types: &HashMap<String, TypeBinding>,
-) -> Option<TypeBinding> {
-    let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
-        return None;
-    };
-    if !matches!(attribute.attr.as_str(), "get" | "setdefault") {
-        return None;
-    }
-    let receiver_type = expr_type(classes, &attribute.value, types)?;
-    if is_mapping_collection(&receiver_type.base) {
-        return receiver_type.args.get(1).cloned();
-    }
-    None
-}
-
-fn mapping_values_call_type(
-    classes: &[ClassInfo],
-    call: &ast::ExprCall,
-    types: &HashMap<String, TypeBinding>,
-) -> Option<TypeBinding> {
-    let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
-        return None;
-    };
-    if attribute.attr.as_str() != "values" {
-        return None;
-    }
-    let receiver_type = expr_type(classes, &attribute.value, types)?;
-    if !is_mapping_collection(&receiver_type.base) {
-        return None;
-    }
-    Some(TypeBinding {
-        base: "list".to_string(),
-        args: receiver_type.args.get(1).cloned().into_iter().collect(),
-        external: false,
-    })
-}
-
 fn builtin_method_call_type(
     classes: &[ClassInfo],
     call: &ast::ExprCall,
@@ -497,10 +459,6 @@ fn is_callable_type(type_name: &str) -> bool {
         type_name,
         "typing.Callable" | "collections.abc.Callable" | "Callable"
     )
-}
-
-pub(super) fn is_mapping_collection(type_name: &str) -> bool {
-    matches!(type_name, "dict" | "typing.Dict" | "typing.Mapping") || type_name.ends_with(".dict")
 }
 
 fn dict_type(

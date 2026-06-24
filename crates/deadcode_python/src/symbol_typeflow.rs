@@ -7,9 +7,8 @@ use super::symbol_branch_types::{
     coalesced_optional_type, compatible_branch_type, is_empty_list_expr,
     optional_list_or_empty_list_type, optional_list_with_empty_list_type,
 };
-use super::symbol_generics::{
-    expr_type, field_read_type, field_type_for_receiver, is_mapping_collection,
-};
+use super::symbol_generics::{expr_type, field_read_type, field_type_for_receiver};
+use super::symbol_mapping_types::is_mapping_collection;
 use super::symbol_rules::{callable_identity, constructor_binding, factory_return_binding};
 use super::symbol_types::type_binding_from_expr;
 use super::symbol_typevars::{
