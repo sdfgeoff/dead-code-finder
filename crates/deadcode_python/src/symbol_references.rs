@@ -39,11 +39,12 @@ impl SymbolCollector<'_> {
                 for target in &assign.targets {
                     self.collect_assignment_target(owner, target, types);
                 }
-                if let Some(type_name) =
+                if let Some(mut type_name) =
                     constructor_binding(self.module, self.imports, self.rules, &assign.value)
                         .or_else(|| field_read_type(self.classes, &assign.value, types))
                         .or_else(|| self.external_call_result_binding(&assign.value, types))
                 {
+                    self.mark_external_if_outside_project(&mut type_name);
                     for target in &assign.targets {
                         if let Some(name) = target_name(target) {
                             types.insert(name.to_string(), type_name.clone());
@@ -396,6 +397,19 @@ impl SymbolCollector<'_> {
             .iter()
             .any(|class_info| class_info.class == same_module)
             .then(|| TypeBinding::erased(same_module))
+    }
+
+    fn mark_external_if_outside_project(&self, binding: &mut TypeBinding) {
+        if binding.external || self.is_project_type(&binding.base) {
+            return;
+        }
+        binding.external = true;
+    }
+
+    fn is_project_type(&self, type_name: &str) -> bool {
+        self.known_modules
+            .iter()
+            .any(|module| type_name == module || type_name.starts_with(&format!("{module}.")))
     }
 }
 

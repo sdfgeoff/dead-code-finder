@@ -1,4 +1,12 @@
 {
   "roots": [{ "path": "pkg", "module": "pkg" }],
-  "entrypoints": ["pkg/main.py"]
+  "entrypoints": ["pkg/main.py"],
+  "rules": {
+    "constructors": [
+      {
+        "match": "structlog.get_logger",
+        "producesType": "structlog.BoundLogger"
+      }
+    ]
+  }
 }
