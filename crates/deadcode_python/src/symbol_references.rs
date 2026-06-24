@@ -44,6 +44,7 @@ impl SymbolCollector<'_> {
                 if let Some(mut type_name) =
                     constructor_binding(self.module, self.imports, self.rules, &assign.value)
                         .or_else(|| field_read_type(self.available_classes, &assign.value, types))
+                        .or_else(|| self.local_call_return_binding(&assign.value, types))
                         .or_else(|| self.external_call_result_binding(&assign.value, types))
                 {
                     self.mark_external_if_outside_project(&mut type_name);
@@ -178,6 +179,29 @@ impl SymbolCollector<'_> {
                 self.collect_expr_references(owner, &subscript.value, types);
                 self.collect_expr_references(owner, &subscript.slice, types);
             }
+            ast::Expr::Tuple(tuple) => {
+                for element in &tuple.elts {
+                    self.collect_expr_references(owner, element, types);
+                }
+            }
+            ast::Expr::List(list) => {
+                for element in &list.elts {
+                    self.collect_expr_references(owner, element, types);
+                }
+            }
+            ast::Expr::Set(set) => {
+                for element in &set.elts {
+                    self.collect_expr_references(owner, element, types);
+                }
+            }
+            ast::Expr::Dict(dict) => {
+                for item in &dict.items {
+                    if let Some(key) = &item.key {
+                        self.collect_expr_references(owner, key, types);
+                    }
+                    self.collect_expr_references(owner, &item.value, types);
+                }
+            }
             _ => {}
         }
     }
@@ -304,6 +328,48 @@ impl SymbolCollector<'_> {
             args: Vec::new(),
             external: true,
         })
+    }
+
+    fn local_call_return_binding(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        let ast::Expr::Call(call) = expr else {
+            return None;
+        };
+        let callee = self.resolved_call_target(&call.func, types)?;
+        self.available_fn_sigs
+            .iter()
+            .find(|signature| signature.function == callee)
+            .and_then(|signature| signature.return_type.clone())
+    }
+
+    fn resolved_call_target(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<String> {
+        match expr {
+            ast::Expr::Name(name) => callable_identity(self.module, self.imports, expr)
+                .or_else(|| Some(format!("{}.{}", self.module, name.id.as_str()))),
+            ast::Expr::Attribute(attribute) => {
+                let receiver_type = match attribute.value.as_ref() {
+                    ast::Expr::Name(receiver) => types
+                        .get(receiver.id.as_str())
+                        .cloned()
+                        .or_else(|| self.class_object_binding(receiver.id.as_str())),
+                    value => field_read_type(self.available_classes, value, types),
+                }?;
+                Some(format!(
+                    "{}.{}",
+                    receiver_type.base,
+                    attribute.attr.as_str()
+                ))
+            }
+            ast::Expr::Subscript(subscript) => self.resolved_call_target(&subscript.value, types),
+            _ => None,
+        }
     }
 
     fn collect_context_manager_references(

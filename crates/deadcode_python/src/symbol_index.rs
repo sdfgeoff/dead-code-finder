@@ -97,6 +97,7 @@ pub enum FieldAnnotation {
 pub struct FunctionSignature {
     pub function: String,
     pub parameter_types: Vec<Option<String>>,
+    pub return_type: Option<TypeBinding>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -242,6 +243,7 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
     }
 
     let mut all_classes = Vec::new();
+    let mut all_function_signatures = Vec::new();
     for (file, module) in &project_files {
         let module_index = index_module(
             module,
@@ -249,12 +251,14 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             &index.known_modules,
             &config.rules,
             &[],
+            &[],
             &ReexportMap::new(),
             false,
             false,
             false,
         )?;
         all_classes.extend(module_index.module.classes.clone());
+        all_function_signatures.extend(module_index.module.function_signatures.clone());
         index.modules.push(module_index.module);
     }
     let reexports = reexport_map(&index.modules);
@@ -267,6 +271,7 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             &index.known_modules,
             &config.rules,
             &all_classes,
+            &all_function_signatures,
             &reexports,
             is_configured_entrypoint(config, file),
             is_configured_weak_entrypoint(config, file),
@@ -387,6 +392,7 @@ fn index_module(
     known_modules: &HashSet<String>,
     rules: &RuleConfig,
     available_classes: &[ClassInfo],
+    available_fn_sigs: &[FunctionSignature],
     reexports: &ReexportMap,
     is_configured_entrypoint: bool,
     is_configured_weak_entrypoint: bool,
@@ -426,6 +432,7 @@ fn index_module(
                 imports: &mut imports,
                 classes: &mut classes,
                 available_classes,
+                available_fn_sigs,
                 reexports,
                 fn_sigs: &mut function_signatures,
                 call_args: &mut call_argument_types,

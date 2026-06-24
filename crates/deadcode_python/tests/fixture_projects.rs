@@ -90,6 +90,17 @@ fn generic_collection_iteration_resolves_feature_fields() {
 }
 
 #[test]
+fn local_return_annotations_resolve_call_results() {
+    let report = analyze_fixture("local_return_annotations_resolve_call_results");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.client.Response.id".to_string()));
+    assert!(!symbols.contains(&"pkg.client.Response.created".to_string()));
+    assert!(symbols.contains(&"pkg.client.Response.unused".to_string()));
+}
+
+#[test]
 fn scripts_inheritance_generics_and_unresolved_receivers_are_reported() {
     let report = analyze_fixture("scripts_inheritance_generics_and_unresolved_receivers");
     let symbols = finding_symbols(&report);

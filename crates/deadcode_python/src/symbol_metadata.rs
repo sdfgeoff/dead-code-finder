@@ -53,6 +53,10 @@ pub(super) fn function_signature(
     FunctionSignature {
         function: function.to_string(),
         parameter_types,
+        return_type: function_def
+            .returns
+            .as_ref()
+            .and_then(|returns| type_binding_from_expr(module, imports, returns)),
     }
 }
 

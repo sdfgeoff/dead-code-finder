@@ -44,6 +44,7 @@ pub(super) struct SymbolCollector<'a> {
     pub(super) imports: &'a mut Vec<ResolvedImport>,
     pub(super) classes: &'a mut Vec<ClassInfo>,
     pub(super) available_classes: &'a [ClassInfo],
+    pub(super) available_fn_sigs: &'a [FunctionSignature],
     pub(super) fn_sigs: &'a mut Vec<FunctionSignature>,
     pub(super) call_args: &'a mut Vec<CallArgumentType>,
     pub(super) references: &'a mut Vec<SymbolReference>,
