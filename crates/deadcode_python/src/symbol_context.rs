@@ -21,6 +21,10 @@ impl SymbolCollector<'_> {
             target_name(optional_vars),
             self.contextmanager_generator_binding(context_expr)
                 .or_else(|| {
+                    self.local_call_return_binding(context_expr, types)
+                        .and_then(|binding| generator_yield_type(&binding).cloned())
+                })
+                .or_else(|| {
                     constructor_binding(self.module, self.imports, self.rules, context_expr)
                 })
                 .or_else(|| expr_type(self.available_classes, context_expr, types)),
@@ -81,8 +85,14 @@ impl SymbolCollector<'_> {
 fn generator_yield_type(binding: &TypeBinding) -> Option<&TypeBinding> {
     if !matches!(
         binding.base.as_str(),
-        "typing.Generator" | "collections.abc.Generator" | "Generator"
+        "typing.Generator"
+            | "collections.abc.Generator"
+            | "Generator"
+            | "typing.AsyncIterator"
+            | "collections.abc.AsyncIterator"
+            | "AsyncIterator"
     ) && !binding.base.ends_with(".Generator")
+        && !binding.base.ends_with(".AsyncIterator")
     {
         return None;
     }

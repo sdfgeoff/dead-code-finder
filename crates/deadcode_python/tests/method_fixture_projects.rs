@@ -65,6 +65,23 @@ fn list_slice_preserves_collection_type() {
     assert!(symbols.contains(&"pkg.main.dead".to_string()));
 }
 
+#[test]
+fn async_contextmanager_return_type() {
+    let report = analyze_fixture("async_contextmanager_return_type");
+
+    assert!(report.diagnostics.is_empty());
+}
+
+#[test]
+fn init_self_field_coalesced_constructor() {
+    let report = analyze_fixture("init_self_field_coalesced_constructor");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Feature.value".to_string()));
+    assert!(symbols.contains(&"pkg.main.Feature.unused".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))

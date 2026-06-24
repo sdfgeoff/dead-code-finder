@@ -44,35 +44,6 @@ impl SymbolCollector<'_> {
             .or_else(|| type_binding_from_expr(self.module, self.imports, value))
     }
 
-    pub(super) fn external_call_result_binding(
-        &self,
-        expr: &ast::Expr,
-        types: &HashMap<String, TypeBinding>,
-    ) -> Option<TypeBinding> {
-        let ast::Expr::Call(call) = expr else {
-            if let ast::Expr::Await(await_expr) = expr {
-                return self.external_call_result_binding(&await_expr.value, types);
-            }
-            return None;
-        };
-        let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
-            return None;
-        };
-        let receiver_type = match attribute.value.as_ref() {
-            ast::Expr::Name(receiver) => types
-                .get(receiver.id.as_str())
-                .cloned()
-                .or_else(|| self.class_object_binding(receiver.id.as_str()))
-                .or_else(|| self.external_import_binding(receiver.id.as_str())),
-            value => field_read_type(self.available_classes, value, types),
-        }?;
-        receiver_type.external.then(|| TypeBinding {
-            base: format!("{}.{}", receiver_type.base, attribute.attr.as_str()),
-            args: Vec::new(),
-            external: true,
-        })
-    }
-
     pub(super) fn known_call_result_binding(&self, expr: &ast::Expr) -> Option<TypeBinding> {
         let ast::Expr::Call(call) = expr else {
             return None;
@@ -473,7 +444,7 @@ impl SymbolCollector<'_> {
         collect_type_var_substitutions(annotation, &argument_type, substitutions);
     }
 
-    fn external_import_binding(&self, name: &str) -> Option<TypeBinding> {
+    pub(super) fn external_import_binding(&self, name: &str) -> Option<TypeBinding> {
         self.imports.iter().find_map(|import| {
             if import.binding != name {
                 return None;

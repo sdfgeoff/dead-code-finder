@@ -309,22 +309,31 @@ impl SymbolCollector<'_> {
         }
 
         let callee = callable_identity(self.module, self.imports, &call.func);
+        let flow_callee = callee.as_deref().map(|callee| {
+            self.constructor_init_callee(callee)
+                .unwrap_or_else(|| callee.to_string())
+        });
         for (name, range) in
             callable_argument_references(self.rules, call, callee.as_deref(), types)
         {
             self.push_reference(owner, &name, range);
         }
         for (position, arg) in call.arguments.args.iter().enumerate() {
-            if let (Some(callee), Some(concrete_type)) = (
-                callee.as_ref(),
-                constructor_binding(self.module, self.imports, self.rules, arg)
-                    .or_else(|| self.class_object_argument_binding(arg)),
-            ) {
+            let concrete_types = self.concrete_argument_types(arg);
+            for concrete_type in concrete_types {
+                let Some(callee) = &flow_callee else {
+                    continue;
+                };
+                let position = if callee.ends_with(".__init__") {
+                    position + 1
+                } else {
+                    position
+                };
                 self.call_args.push(CallArgumentType {
                     from: owner.to_string(),
                     callee: callee.clone(),
                     position,
-                    concrete_type: concrete_type.base,
+                    concrete_type,
                     span: self.locator.span_from_range_string(self.file, arg.range()),
                 });
             }
@@ -412,5 +421,31 @@ impl SymbolCollector<'_> {
             .iter()
             .any(|class_info| class_info.class == same_module)
             .then(|| TypeBinding::erased(same_module))
+    }
+
+    fn constructor_init_callee(&self, callee: &str) -> Option<String> {
+        self.available_classes
+            .iter()
+            .any(|class_info| class_info.class == callee)
+            .then(|| format!("{callee}.__init__"))
+    }
+
+    fn concrete_argument_types(&self, arg: &ast::Expr) -> Vec<String> {
+        if let Some(binding) = constructor_binding(self.module, self.imports, self.rules, arg)
+            .or_else(|| self.class_object_argument_binding(arg))
+        {
+            return vec![binding.base];
+        }
+        let ast::Expr::List(list) = arg else {
+            return Vec::new();
+        };
+        list.elts
+            .iter()
+            .filter_map(|element| {
+                constructor_binding(self.module, self.imports, self.rules, element)
+                    .or_else(|| self.class_object_argument_binding(element))
+                    .map(|binding| binding.base)
+            })
+            .collect()
     }
 }

@@ -12,6 +12,17 @@ fn starred_list_comprehension_references_are_traversed() {
     assert!(symbols.contains(&"pkg.main.dead".to_string()));
 }
 
+#[test]
+fn registry_stored_subtype_method_liveness() {
+    let report = analyze_fixture("registry_stored_subtype_method_liveness");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Tool.execute".to_string()));
+    assert!(!symbols.contains(&"pkg.main.LiveTool.execute".to_string()));
+    assert!(symbols.contains(&"pkg.main.DeadTool.execute".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))

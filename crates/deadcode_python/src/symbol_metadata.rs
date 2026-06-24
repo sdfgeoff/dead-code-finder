@@ -235,7 +235,8 @@ fn init_self_field(
                     .find(|(parameter, _)| parameter == value.id.as_str())
                     .map(|(_, type_name)| type_name.clone())?,
                 ast::Expr::Call(call) => type_binding_from_expr(module, imports, &call.func)?,
-                _ => return None,
+                value => coalesced_constructor_type(module, imports, value, parameter_types)
+                    .or_else(|| collection_constructor_type(module, imports, value))?,
             };
             (field_name, type_name)
         }
@@ -250,6 +251,105 @@ fn init_self_field(
         name: field_name.to_string(),
         annotation: FieldAnnotation::Concrete(type_name),
     })
+}
+
+fn coalesced_constructor_type(
+    module: &str,
+    imports: &[ResolvedImport],
+    expr: &ast::Expr,
+    parameter_types: &[(String, TypeBinding)],
+) -> Option<TypeBinding> {
+    let ast::Expr::BoolOp(bool_op) = expr else {
+        return None;
+    };
+    if bool_op.op != ast::BoolOp::Or || bool_op.values.len() != 2 {
+        return None;
+    }
+    let left = parameter_binding(&bool_op.values[0], parameter_types);
+    let right = constructed_value_type(module, imports, &bool_op.values[1]);
+    match (left, right) {
+        (Some(parameter), Some(constructed)) if union_contains(&parameter, &constructed.base) => {
+            Some(constructed)
+        }
+        _ => None,
+    }
+}
+
+fn parameter_binding(
+    expr: &ast::Expr,
+    parameter_types: &[(String, TypeBinding)],
+) -> Option<TypeBinding> {
+    let ast::Expr::Name(name) = expr else {
+        return None;
+    };
+    parameter_types
+        .iter()
+        .find(|(parameter, _)| parameter == name.id.as_str())
+        .map(|(_, binding)| binding.clone())
+}
+
+fn union_contains(binding: &TypeBinding, type_name: &str) -> bool {
+    is_union_type(&binding.base) && binding.args.iter().any(|arg| arg.base == type_name)
+}
+
+fn is_union_type(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "typing.Union" | "typing.Optional" | "Union" | "Optional"
+    ) || type_name.ends_with(".Union")
+        || type_name.ends_with(".Optional")
+}
+
+fn collection_constructor_type(
+    module: &str,
+    imports: &[ResolvedImport],
+    expr: &ast::Expr,
+) -> Option<TypeBinding> {
+    match expr {
+        ast::Expr::List(list) => list
+            .elts
+            .iter()
+            .find_map(|element| constructed_value_type(module, imports, element))
+            .map(|item| TypeBinding {
+                base: "list".to_string(),
+                args: vec![item],
+                external: false,
+            }),
+        ast::Expr::ListComp(list_comp) => constructed_value_type(module, imports, &list_comp.elt)
+            .map(|item| TypeBinding {
+                base: "list".to_string(),
+                args: vec![item],
+                external: false,
+            }),
+        ast::Expr::Dict(dict) => dict
+            .items
+            .iter()
+            .find_map(|item| constructed_value_type(module, imports, &item.value))
+            .map(dict_with_value_type),
+        ast::Expr::DictComp(dict_comp) => {
+            constructed_value_type(module, imports, &dict_comp.value).map(dict_with_value_type)
+        }
+        _ => None,
+    }
+}
+
+fn constructed_value_type(
+    module: &str,
+    imports: &[ResolvedImport],
+    expr: &ast::Expr,
+) -> Option<TypeBinding> {
+    let ast::Expr::Call(call) = expr else {
+        return None;
+    };
+    type_binding_from_expr(module, imports, &call.func)
+}
+
+fn dict_with_value_type(value: TypeBinding) -> TypeBinding {
+    TypeBinding {
+        base: "dict".to_string(),
+        args: vec![TypeBinding::erased("object".to_string()), value],
+        external: false,
+    }
 }
 
 fn field_annotation(
