@@ -199,6 +199,167 @@ def list_items():
         assert_eq!(report.findings[0].symbol, "pkg.main.list_items");
     }
 
+    #[test]
+    fn fastapi_rules_keep_routes_and_dependencies_alive() {
+        let workspace = test_workspace("fastapi_rules_keep_routes_and_dependencies_alive");
+        std::fs::create_dir_all(workspace.join("pkg")).unwrap();
+        std::fs::write(
+            workspace.join("pkg/main.py"),
+            r#"
+from fastapi import Depends, FastAPI
+
+app = FastAPI()
+
+def get_user():
+    pass
+
+def unused_dependency():
+    pass
+
+@app.get("/items")
+def list_items(entity = Depends(get_user)):
+    pass
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            workspace.join("dead-code-finder.json"),
+            r#"{
+                "roots": [{"path": "pkg", "module": "pkg"}],
+                "entrypoints": ["pkg/main.py"],
+                "rules": {
+                    "constructors": [{
+                        "match": "fastapi.FastAPI",
+                        "producesType": "fastapi.FastAPI"
+                    }],
+                    "decorators": [{
+                        "receiverType": "fastapi.FastAPI",
+                        "methods": ["get"],
+                        "effect": "registerDecoratedFunction"
+                    }],
+                    "calls": [{
+                        "function": "fastapi.Depends",
+                        "effect": "useCallableArgument",
+                        "argument": 0
+                    }]
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let report = analyze_project(&AnalyzeOptions::new(
+            workspace.join("dead-code-finder.json"),
+        ))
+        .unwrap();
+
+        assert_eq!(report.findings.len(), 1);
+        assert_eq!(report.findings[0].symbol, "pkg.main.unused_dependency");
+    }
+
+    #[test]
+    fn fastapi_rules_cover_router_decorators_and_include_router_config() {
+        let workspace =
+            test_workspace("fastapi_rules_cover_router_decorators_and_include_router_config");
+        std::fs::create_dir_all(workspace.join("pkg")).unwrap();
+        std::fs::write(
+            workspace.join("pkg/main.py"),
+            r#"
+from fastapi import APIRouter, FastAPI
+
+app = FastAPI()
+router = APIRouter()
+
+@router.get("/items")
+def list_items():
+    pass
+
+app.include_router(router)
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            workspace.join("dead-code-finder.json"),
+            r#"{
+                "roots": [{"path": "pkg", "module": "pkg"}],
+                "entrypoints": ["pkg/main.py"],
+                "rules": {
+                    "constructors": [
+                        {
+                            "match": "fastapi.FastAPI",
+                            "producesType": "fastapi.FastAPI"
+                        },
+                        {
+                            "match": "fastapi.APIRouter",
+                            "producesType": "fastapi.APIRouter"
+                        }
+                    ],
+                    "decorators": [{
+                        "receiverType": "fastapi.APIRouter",
+                        "methods": ["get"],
+                        "effect": "registerDecoratedFunction"
+                    }],
+                    "calls": [{
+                        "receiverType": "fastapi.FastAPI",
+                        "method": "include_router",
+                        "effect": "connectRouter",
+                        "argument": 0
+                    }]
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let report = analyze_project(&AnalyzeOptions::new(
+            workspace.join("dead-code-finder.json"),
+        ))
+        .unwrap();
+
+        assert!(report.is_clean());
+    }
+
+    #[test]
+    fn pydantic_style_construction_uses_only_explicit_fields() {
+        let workspace = test_workspace("pydantic_style_construction_uses_only_explicit_fields");
+        std::fs::create_dir_all(workspace.join("pkg")).unwrap();
+        std::fs::write(
+            workspace.join("pkg/main.py"),
+            r#"
+from pydantic import BaseModel
+
+class ExampleEntity(BaseModel):
+    name: str
+    age: int
+
+def run():
+    ExampleEntity(name="A")
+
+run()
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            workspace.join("dead-code-finder.json"),
+            r#"{
+                "roots": [{"path": "pkg", "module": "pkg"}],
+                "entrypoints": ["pkg/main.py"]
+            }"#,
+        )
+        .unwrap();
+
+        let report = analyze_project(&AnalyzeOptions::new(
+            workspace.join("dead-code-finder.json"),
+        ))
+        .unwrap();
+        let symbols = report
+            .findings
+            .iter()
+            .map(|finding| finding.symbol.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(!symbols.contains(&"pkg.main.ExampleEntity.name"));
+        assert!(symbols.contains(&"pkg.main.ExampleEntity.age"));
+    }
+
     fn test_workspace(name: &str) -> std::path::PathBuf {
         let unique = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

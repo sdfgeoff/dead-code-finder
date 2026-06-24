@@ -28,8 +28,8 @@ use self::symbol_imports::{collect_import, collect_import_from};
 use self::symbol_members::push_member_reference;
 use self::symbol_metadata::{class_info, function_signature};
 use self::symbol_rules::{
-    callable_identity, constructed_type_from_callee, constructor_binding,
-    decorator_registers_function,
+    callable_argument_references, callable_identity, constructed_type_from_callee,
+    constructor_binding, decorator_registers_function,
 };
 use self::symbol_types::{type_binding_from_expr, TypeBinding};
 use super::{
@@ -82,7 +82,7 @@ impl SymbolCollector<'_> {
                 self.push_function_signature(&function_owner, function);
                 self.collect_decorator_rules(function, module_types);
                 let types = self.function_type_bindings(function, None);
-                self.collect_function_references(&function_owner, &function.body, types);
+                self.collect_function_references(&function_owner, function, types);
             }
             ast::Stmt::ClassDef(class_def) => {
                 let class_name = class_def.name.as_str();
@@ -146,7 +146,7 @@ impl SymbolCollector<'_> {
                         &function.body,
                     );
                     let types = self.function_type_bindings(function, Some(class_name));
-                    self.collect_function_references(&method_owner, &function.body, types);
+                    self.collect_function_references(&method_owner, function, types);
                 }
                 ast::Stmt::AnnAssign(assign) => {
                     if let Some(name) = target_name(&assign.target) {
@@ -228,10 +228,15 @@ impl SymbolCollector<'_> {
     fn collect_function_references(
         &mut self,
         owner: &str,
-        body: &[ast::Stmt],
+        function: &ast::StmtFunctionDef,
         mut types: HashMap<String, TypeBinding>,
     ) {
-        for statement in body {
+        for parameter in function.parameters.iter_non_variadic_params() {
+            if let Some(default) = parameter.default() {
+                self.collect_expr_references(owner, default, &types);
+            }
+        }
+        for statement in &function.body {
             self.collect_statement_references(owner, statement, &mut types);
         }
     }
@@ -246,7 +251,7 @@ impl SymbolCollector<'_> {
             ast::Stmt::FunctionDef(function) => {
                 let function_owner = format!("{}.{}", self.module, function.name.as_str());
                 let types = self.function_type_bindings(function, None);
-                self.collect_function_references(&function_owner, &function.body, types);
+                self.collect_function_references(&function_owner, function, types);
             }
             ast::Stmt::ClassDef(_) => {}
             ast::Stmt::Expr(expr) => self.collect_expr_references(owner, &expr.value, types),
@@ -355,6 +360,11 @@ impl SymbolCollector<'_> {
         }
 
         let callee = callable_identity(self.module, self.imports, &call.func);
+        for (name, range) in
+            callable_argument_references(self.rules, call, callee.as_deref(), types)
+        {
+            self.push_reference(owner, &name, range);
+        }
         for (position, arg) in call.arguments.args.iter().enumerate() {
             if let (Some(callee), Some(concrete_type)) = (
                 callee.as_ref(),

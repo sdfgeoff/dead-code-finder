@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use ruff_python_ast as ast;
+use ruff_text_size::TextRange;
 
 use crate::config::RuleConfig;
 use crate::symbol_index::{ImportTarget, ResolvedImport};
@@ -78,6 +79,55 @@ pub(super) fn callable_identity(
         ast::Expr::Subscript(subscript) => callable_identity(module, imports, &subscript.value),
         _ => None,
     }
+}
+
+pub(super) fn callable_argument_references(
+    rules: &RuleConfig,
+    call: &ast::ExprCall,
+    callee: Option<&str>,
+    types: &HashMap<String, TypeBinding>,
+) -> Vec<(String, TextRange)> {
+    let mut references = Vec::new();
+    for rule in &rules.calls {
+        if rule.effect != "useCallableArgument" || !call_rule_matches(rule, call, callee, types) {
+            continue;
+        }
+        let Some(ast::Expr::Name(name)) = call.arguments.args.get(rule.argument) else {
+            continue;
+        };
+        references.push((name.id.as_str().to_string(), name.range));
+    }
+    references
+}
+
+fn call_rule_matches(
+    rule: &crate::config::CallRule,
+    call: &ast::ExprCall,
+    callee: Option<&str>,
+    types: &HashMap<String, TypeBinding>,
+) -> bool {
+    if rule
+        .function
+        .as_deref()
+        .is_some_and(|function| Some(function) == callee)
+    {
+        return true;
+    }
+    let (Some(receiver_type), Some(method)) = (&rule.receiver_type, &rule.method) else {
+        return false;
+    };
+    let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
+        return false;
+    };
+    if attribute.attr.as_str() != method {
+        return false;
+    }
+    let ast::Expr::Name(receiver) = attribute.value.as_ref() else {
+        return false;
+    };
+    types
+        .get(receiver.id.as_str())
+        .is_some_and(|binding| binding.base == *receiver_type)
 }
 
 fn resolve_name_identity(module: &str, imports: &[ResolvedImport], name: &str) -> Option<String> {

@@ -43,6 +43,8 @@ pub struct RuleConfig {
     pub constructors: Vec<ConstructorRule>,
     #[serde(default)]
     pub decorators: Vec<DecoratorRule>,
+    #[serde(default)]
+    pub calls: Vec<CallRule>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -59,6 +61,19 @@ pub struct DecoratorRule {
     pub receiver_type: String,
     pub methods: Vec<String>,
     pub effect: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallRule {
+    #[serde(default)]
+    pub function: Option<String>,
+    #[serde(default)]
+    pub receiver_type: Option<String>,
+    #[serde(default)]
+    pub method: Option<String>,
+    pub effect: String,
+    pub argument: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -185,6 +200,21 @@ fn validate_rules(rules: &RuleConfig) -> Result<(), ConfigError> {
         if decorator.effect != "registerDecoratedFunction" {
             return Err(ConfigError::InvalidRule {
                 message: format!("unsupported decorator effect {}", decorator.effect),
+            });
+        }
+    }
+    for call in &rules.calls {
+        if call.function.is_none() && (call.receiver_type.is_none() || call.method.is_none()) {
+            return Err(ConfigError::InvalidRule {
+                message: "call rules require function or receiverType plus method".to_string(),
+            });
+        }
+        if !matches!(
+            call.effect.as_str(),
+            "useCallableArgument" | "connectRouter"
+        ) {
+            return Err(ConfigError::InvalidRule {
+                message: format!("unsupported call effect {}", call.effect),
             });
         }
     }
