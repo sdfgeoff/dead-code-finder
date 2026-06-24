@@ -52,6 +52,16 @@ fn pydantic_model_validate_json_returns_class() {
 }
 
 #[test]
+fn live_pydantic_model_marks_model_config() {
+    let report = analyze_fixture("live_pydantic_model_marks_model_config");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.LiveModel.model_config".to_string()));
+    assert!(symbols.contains(&"pkg.main.DeadModel.model_config".to_string()));
+}
+
+#[test]
 fn type_adapter_validate_python_returns_generic_arg() {
     let report = analyze_fixture("type_adapter_validate_python_returns_generic_arg");
     let symbols = finding_symbols(&report);

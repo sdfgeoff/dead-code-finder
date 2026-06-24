@@ -151,6 +151,13 @@ fn compute_live_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<Strin
             continue;
         };
 
+        if class_derives_from(&owner, "pydantic.BaseModel", &class_map) {
+            let model_config = format!("{owner}.model_config");
+            if symbol_kinds.contains_key(&model_config) {
+                push_live(&model_config, &mut live, &mut queue);
+            }
+        }
+
         for call_argument in module
             .call_argument_types
             .iter()
@@ -514,6 +521,35 @@ fn is_subclass_or_same(
         return true;
     }
     is_subclass_inner(concrete_type, base_type, class_map, &mut HashSet::new())
+}
+
+fn class_derives_from(
+    concrete_type: &str,
+    base_type: &str,
+    class_map: &HashMap<String, ClassInfo>,
+) -> bool {
+    class_derives_from_inner(concrete_type, base_type, class_map, &mut HashSet::new())
+}
+
+fn class_derives_from_inner(
+    concrete_type: &str,
+    base_type: &str,
+    class_map: &HashMap<String, ClassInfo>,
+    visited: &mut HashSet<String>,
+) -> bool {
+    if concrete_type == base_type {
+        return true;
+    }
+    if !visited.insert(concrete_type.to_string()) {
+        return false;
+    }
+    let Some(class_info) = class_map.get(concrete_type) else {
+        return false;
+    };
+    class_info
+        .bases
+        .iter()
+        .any(|base| class_derives_from_inner(&base.base, base_type, class_map, visited))
 }
 
 fn is_subclass_inner(
