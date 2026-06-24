@@ -129,6 +129,9 @@ impl SymbolCollector<'_> {
             }
             return None;
         };
+        if let Some(return_type) = self.executor_callable_return_binding(call, types) {
+            return Some(return_type);
+        }
         let callee = self.resolved_call_target(&call.func, types)?;
         let signature = self
             .available_fn_sigs
@@ -137,6 +140,25 @@ impl SymbolCollector<'_> {
         let return_type = signature.return_type.clone()?;
         let substitutions = self.type_var_substitutions(signature, call, types);
         Some(substitute_type_vars(&return_type, &substitutions))
+    }
+
+    fn executor_callable_return_binding(
+        &self,
+        call: &ast::ExprCall,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
+            return None;
+        };
+        if attribute.attr.as_str() != "run_in_executor" {
+            return None;
+        }
+        let callback = call.arguments.args.get(1)?;
+        let callback_target = self.resolved_call_target(callback, types)?;
+        self.available_fn_sigs
+            .iter()
+            .find(|signature| signature.function == callback_target)
+            .and_then(|signature| signature.return_type.clone())
     }
 
     pub(super) fn local_call_field_read_binding(

@@ -235,6 +235,14 @@ fn io_bytesio_constructor_and_tuple_return() {
 }
 
 #[test]
+fn executor_callable_return_tuple_unpack() {
+    let report = analyze_fixture("executor_callable_return_tuple_unpack");
+
+    assert!(report.findings.is_empty());
+    assert!(report.diagnostics.is_empty());
+}
+
+#[test]
 fn pathlib_path_join_preserves_external_receiver() {
     let report = analyze_fixture("pathlib_path_join_preserves_external_receiver");
 
