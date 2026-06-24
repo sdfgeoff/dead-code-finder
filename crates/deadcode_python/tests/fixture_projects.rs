@@ -127,6 +127,16 @@ fn local_return_annotations_resolve_call_results() {
 }
 
 #[test]
+fn local_call_result_field_read_resolves_type() {
+    let report = analyze_fixture("local_call_result_field_read_resolves_type");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Settings.host".to_string()));
+    assert!(symbols.contains(&"pkg.main.Settings.unused".to_string()));
+}
+
+#[test]
 fn local_return_list_iteration_resolves_item_fields() {
     let report = analyze_fixture("local_return_list_iteration_resolves_item_fields");
     let symbols = finding_symbols(&report);

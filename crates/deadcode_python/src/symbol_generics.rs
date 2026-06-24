@@ -29,15 +29,7 @@ pub(super) fn field_read_type(
     else {
         return union_field_read_type(classes, &receiver_type, attribute.attr.as_str());
     };
-    let field = class_info
-        .fields
-        .iter()
-        .find(|field| field.name == attribute.attr.as_str())?;
-    match &field.annotation {
-        FieldAnnotation::Concrete(binding) => {
-            Some(substitute_type_params(binding, class_info, &receiver_type))
-        }
-    }
+    class_field_type(class_info, &receiver_type, attribute.attr.as_str())
 }
 
 fn union_field_read_type(
@@ -63,6 +55,32 @@ fn field_type_for_class(
     let class_info = classes
         .iter()
         .find(|class_info| class_info.class == receiver_type.base)?;
+    class_field_type(class_info, receiver_type, field_name)
+}
+
+pub(super) fn field_type_for_receiver(
+    classes: &[ClassInfo],
+    receiver_type: &TypeBinding,
+    field_name: &str,
+) -> Option<TypeBinding> {
+    if receiver_type.external {
+        return Some(TypeBinding {
+            base: format!("{}.{}", receiver_type.base, field_name),
+            args: Vec::new(),
+            external: true,
+        });
+    }
+    let class_info = classes
+        .iter()
+        .find(|class_info| class_info.class == receiver_type.base)?;
+    class_field_type(class_info, receiver_type, field_name)
+}
+
+fn class_field_type(
+    class_info: &ClassInfo,
+    receiver_type: &TypeBinding,
+    field_name: &str,
+) -> Option<TypeBinding> {
     let field = class_info
         .fields
         .iter()

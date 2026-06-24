@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ruff_python_ast as ast;
 
-use super::symbol_generics::{expr_type, field_read_type};
+use super::symbol_generics::{expr_type, field_read_type, field_type_for_receiver};
 use super::symbol_rules::{callable_identity, constructor_binding};
 use super::SymbolCollector;
 use crate::symbol_index::{FunctionSignature, TypeBinding};
@@ -52,6 +52,22 @@ impl SymbolCollector<'_> {
         let return_type = signature.return_type.clone()?;
         let substitutions = self.type_var_substitutions(signature, call, types);
         Some(substitute_type_vars(&return_type, &substitutions))
+    }
+
+    pub(super) fn local_call_field_read_binding(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        let ast::Expr::Attribute(attribute) = expr else {
+            return None;
+        };
+        let receiver_type = self.local_call_return_binding(&attribute.value, types)?;
+        field_type_for_receiver(
+            self.available_classes,
+            &receiver_type,
+            attribute.attr.as_str(),
+        )
     }
 
     pub(super) fn fluent_self_call_binding(
