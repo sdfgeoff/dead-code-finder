@@ -36,6 +36,26 @@ fn date_fromisoformat_result_has_year() {
     assert!(report.diagnostics.is_empty());
 }
 
+#[test]
+fn pydantic_model_validate_json_returns_class() {
+    let report = analyze_fixture("pydantic_model_validate_json_returns_class");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Args.answer".to_string()));
+    assert!(symbols.contains(&"pkg.main.Args.unused".to_string()));
+}
+
+#[test]
+fn type_adapter_validate_python_returns_generic_arg() {
+    let report = analyze_fixture("type_adapter_validate_python_returns_generic_arg");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.models.BaseEvent.source_id".to_string()));
+    assert!(symbols.contains(&"pkg.models.BaseEvent.unused_base".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))

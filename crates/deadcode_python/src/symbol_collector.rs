@@ -46,6 +46,8 @@ mod symbol_member_refs;
 mod symbol_members;
 #[path = "symbol_metadata.rs"]
 mod symbol_metadata;
+#[path = "symbol_pydantic.rs"]
+mod symbol_pydantic;
 #[path = "symbol_references.rs"]
 mod symbol_references;
 #[path = "symbol_rules.rs"]

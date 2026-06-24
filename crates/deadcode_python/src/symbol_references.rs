@@ -87,7 +87,10 @@ impl SymbolCollector<'_> {
                         type_binding_from_expr(self.module, self.imports, &assign.annotation)
                     {
                         type_name = expand_alias_binding(&type_name, self.available_values);
-                        types.insert(name.to_string(), type_name);
+                        types.insert(name.to_string(), type_name.clone());
+                        if owner == self.module {
+                            self.push_value_binding(name, type_name);
+                        }
                     }
                 } else {
                     self.collect_assignment_target(owner, &assign.target, types);
@@ -422,7 +425,7 @@ impl SymbolCollector<'_> {
                 .available_values
                 .iter()
                 .find(|value| value.qualified_name == qualified_name)
-                .map(|value| value.binding.clone())
+                .map(|value| expand_alias_binding(&value.binding, self.available_values))
             else {
                 continue;
             };
