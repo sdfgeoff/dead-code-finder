@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use ruff_python_ast as ast;
 
+use super::symbol_aliases::expand_alias_binding;
 use super::symbol_expr::expr_type_key;
 use super::symbol_generics::expr_type;
 use super::symbol_types::type_binding_from_expr;
@@ -66,7 +67,10 @@ impl SymbolCollector<'_> {
         types: &HashMap<String, TypeBinding>,
     ) -> Option<(String, TypeBinding)> {
         let (value, class_type) = self.isinstance_parts(test)?;
-        let current = self.narrowable_expr_type(value, types)?;
+        let current = expand_alias_binding(
+            &self.narrowable_expr_type(value, types)?,
+            self.available_values,
+        );
         let narrowed = union_member_matching(&current, &class_type.base)?;
         Some((expr_type_key(value)?, narrowed))
     }
@@ -77,7 +81,10 @@ impl SymbolCollector<'_> {
         types: &HashMap<String, TypeBinding>,
     ) -> Option<(String, TypeBinding)> {
         let (value, class_type) = self.isinstance_parts(test)?;
-        let current = self.narrowable_expr_type(value, types)?;
+        let current = expand_alias_binding(
+            &self.narrowable_expr_type(value, types)?,
+            self.available_values,
+        );
         let narrowed = union_without(&current, &class_type.base)?;
         Some((expr_type_key(value)?, narrowed))
     }
@@ -118,7 +125,10 @@ impl SymbolCollector<'_> {
             return None;
         }
         let keep_none = matches!(op, ast::CmpOp::Is) == truthy;
-        let current = self.narrowable_expr_type(&compare.left, types)?;
+        let current = expand_alias_binding(
+            &self.narrowable_expr_type(&compare.left, types)?,
+            self.available_values,
+        );
         let narrowed = if keep_none {
             TypeBinding::erased("None".to_string())
         } else {
@@ -209,8 +219,15 @@ fn is_none_type(type_name: &str) -> bool {
 }
 
 pub(super) fn suite_returns(body: &[ast::Stmt]) -> bool {
-    body.iter()
-        .any(|statement| matches!(statement, ast::Stmt::Return(_) | ast::Stmt::Raise(_)))
+    body.iter().any(|statement| {
+        matches!(
+            statement,
+            ast::Stmt::Return(_)
+                | ast::Stmt::Raise(_)
+                | ast::Stmt::Break(_)
+                | ast::Stmt::Continue(_)
+        )
+    })
 }
 
 pub(super) fn merge_completed_branch_types(

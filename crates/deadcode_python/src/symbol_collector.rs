@@ -4,6 +4,8 @@ mod symbol_aliases;
 mod symbol_append;
 #[path = "symbol_assignment_target.rs"]
 mod symbol_assignment_target;
+#[path = "symbol_binary_ops.rs"]
+mod symbol_binary_ops;
 #[path = "symbol_branch_narrowing.rs"]
 mod symbol_branch_narrowing;
 #[path = "symbol_branch_types.rs"]

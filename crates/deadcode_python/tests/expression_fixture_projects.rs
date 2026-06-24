@@ -23,6 +23,18 @@ fn registry_stored_subtype_method_liveness() {
     assert!(symbols.contains(&"pkg.main.DeadTool.execute".to_string()));
 }
 
+#[test]
+fn generator_expression_references_are_traversed() {
+    let report = analyze_fixture("generator_expression_references");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.to_items".to_string()));
+    assert!(!symbols.contains(&"pkg.main.score".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Item.value".to_string()));
+    assert!(symbols.contains(&"pkg.main.dead".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))

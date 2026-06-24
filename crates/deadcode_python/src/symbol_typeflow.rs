@@ -8,7 +8,6 @@ use super::symbol_branch_types::{
     optional_list_or_empty_list_type, optional_list_with_empty_list_type,
 };
 use super::symbol_callable_alias::callable_alias_target;
-use super::symbol_datetime::{is_datetime_like, is_timedelta};
 use super::symbol_generics::{expr_type, field_read_type, field_type_for_receiver};
 use super::symbol_mapping_types::is_mapping_collection;
 use super::symbol_rules::{callable_identity, constructor_binding, factory_return_binding};
@@ -35,6 +34,7 @@ impl SymbolCollector<'_> {
             .or_else(|| self.list_literal_flow_binding(value, types))
             .or_else(|| self.list_comprehension_flow_binding(value, types))
             .or_else(|| self.dict_comprehension_flow_binding(value, types))
+            .or_else(|| self.generator_expression_flow_binding(value, types))
             .or_else(|| expr_type(self.available_classes, value, types))
             .or_else(|| constructor_binding(self.module, self.imports, self.rules, value))
             .or_else(|| self.local_call_field_read_binding(value, types))
@@ -69,49 +69,6 @@ impl SymbolCollector<'_> {
             args: Vec::new(),
             external: true,
         })
-    }
-
-    pub(super) fn binop_expression_binding(
-        &self,
-        expr: &ast::Expr,
-        types: &HashMap<String, TypeBinding>,
-    ) -> Option<TypeBinding> {
-        let ast::Expr::BinOp(bin_op) = expr else {
-            return None;
-        };
-        if bin_op.op == ast::Operator::Div && self.is_pathlib_path_expr(&bin_op.left) {
-            return Some(TypeBinding {
-                base: "pathlib.Path".to_string(),
-                args: Vec::new(),
-                external: true,
-            });
-        }
-        let left = self.expression_flow_binding(&bin_op.left, types)?;
-        let right = self.expression_flow_binding(&bin_op.right, types)?;
-        match bin_op.op {
-            ast::Operator::Add if is_datetime_like(&left) && is_timedelta(&right) => Some(left),
-            ast::Operator::Sub if is_datetime_like(&left) && is_timedelta(&right) => Some(left),
-            ast::Operator::Div if left.external => Some(left),
-            _ => None,
-        }
-    }
-
-    fn is_pathlib_path_expr(&self, expr: &ast::Expr) -> bool {
-        match expr {
-            ast::Expr::Call(call) => match call.func.as_ref() {
-                ast::Expr::Name(_) => {
-                    callable_identity(self.module, self.imports, &call.func).as_deref()
-                        == Some("pathlib.Path")
-                }
-                ast::Expr::Attribute(attribute) => self.is_pathlib_path_expr(&attribute.value),
-                _ => false,
-            },
-            ast::Expr::Attribute(attribute) => self.is_pathlib_path_expr(&attribute.value),
-            ast::Expr::BinOp(bin_op) if bin_op.op == ast::Operator::Div => {
-                self.is_pathlib_path_expr(&bin_op.left)
-            }
-            _ => false,
-        }
     }
 
     pub(super) fn local_call_return_binding(
@@ -331,6 +288,7 @@ impl SymbolCollector<'_> {
             .or_else(|| constructor_binding(self.module, self.imports, self.rules, expr))
             .or_else(|| self.tuple_literal_flow_binding(expr, types))
             .or_else(|| self.list_literal_flow_binding(expr, types))
+            .or_else(|| self.generator_expression_flow_binding(expr, types))
             .or_else(|| expr_type(self.available_classes, expr, types))
     }
 

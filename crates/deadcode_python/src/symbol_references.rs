@@ -112,6 +112,7 @@ impl SymbolCollector<'_> {
                 if !suite_returns(&if_stmt.body) {
                     completed_branches.push(body_types);
                 }
+                let mut has_else = false;
                 for clause in &if_stmt.elif_else_clauses {
                     if let Some(test) = &clause.test {
                         self.collect_expr_references(owner, test, &remaining_types);
@@ -126,12 +127,16 @@ impl SymbolCollector<'_> {
                         remaining_types = next_remaining;
                         continue;
                     }
+                    has_else = true;
                     for nested in &clause.body {
                         self.collect_statement_references(owner, nested, &mut remaining_types);
                     }
                     if !suite_returns(&clause.body) {
                         completed_branches.push(remaining_types.clone());
                     }
+                }
+                if !has_else {
+                    completed_branches.push(remaining_types);
                 }
                 merge_completed_branch_types(types, completed_branches);
             }
@@ -274,6 +279,9 @@ impl SymbolCollector<'_> {
             }
             ast::Expr::DictComp(dict_comp) => {
                 self.collect_dict_comprehension_references(owner, dict_comp, types);
+            }
+            ast::Expr::Generator(generator) => {
+                self.collect_generator_references(owner, generator, types);
             }
             ast::Expr::Set(set) => {
                 for element in &set.elts {

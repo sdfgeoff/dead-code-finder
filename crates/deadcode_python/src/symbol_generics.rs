@@ -325,6 +325,7 @@ fn is_iterable_collection(type_name: &str) -> bool {
             | "collections.abc.Collection"
             | "collections.abc.AsyncIterator"
             | "collections.abc.AsyncIterable"
+            | "typing.Generator"
             | "typing.AsyncIterator"
             | "typing.AsyncIterable"
     ) || type_name.ends_with(".list")

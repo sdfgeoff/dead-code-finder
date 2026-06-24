@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use ruff_python_ast as ast;
 
+use super::symbol_comprehension_narrowing::apply_comprehension_guard_narrowing;
 use super::symbol_expr::target_name;
 use super::symbol_iteration::bind_iteration_target;
 use super::SymbolCollector;
@@ -36,6 +37,9 @@ impl SymbolCollector<'_> {
         for generator in &list_comp.generators {
             let item_type = self.iteration_item_type(&generator.iter, &scoped_types)?;
             bind_comprehension_target(&generator.target, &item_type, &mut scoped_types);
+            for guard in &generator.ifs {
+                apply_comprehension_guard_narrowing(guard, &mut scoped_types);
+            }
         }
         Some(TypeBinding {
             base: "list".to_string(),
@@ -56,6 +60,9 @@ impl SymbolCollector<'_> {
         for generator in &dict_comp.generators {
             let item_type = self.iteration_item_type(&generator.iter, &scoped_types)?;
             bind_comprehension_target(&generator.target, &item_type, &mut scoped_types);
+            for guard in &generator.ifs {
+                apply_comprehension_guard_narrowing(guard, &mut scoped_types);
+            }
         }
         Some(TypeBinding {
             base: "dict".to_string(),
@@ -63,6 +70,29 @@ impl SymbolCollector<'_> {
                 self.expression_flow_binding(&dict_comp.key, &scoped_types)?,
                 self.expression_flow_binding(&dict_comp.value, &scoped_types)?,
             ],
+            external: false,
+        })
+    }
+
+    pub(super) fn generator_expression_flow_binding(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        let ast::Expr::Generator(generator_exp) = expr else {
+            return None;
+        };
+        let mut scoped_types = types.clone();
+        for generator in &generator_exp.generators {
+            let item_type = self.iteration_item_type(&generator.iter, &scoped_types)?;
+            bind_comprehension_target(&generator.target, &item_type, &mut scoped_types);
+            for guard in &generator.ifs {
+                apply_comprehension_guard_narrowing(guard, &mut scoped_types);
+            }
+        }
+        Some(TypeBinding {
+            base: "typing.Generator".to_string(),
+            args: vec![self.expression_flow_binding(&generator_exp.elt, &scoped_types)?],
             external: false,
         })
     }

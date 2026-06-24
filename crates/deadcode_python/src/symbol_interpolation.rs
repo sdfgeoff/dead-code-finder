@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use ruff_python_ast as ast;
 
+use super::symbol_comprehension_narrowing::apply_comprehension_guard_narrowing;
 use super::symbol_expr::target_name;
 use super::symbol_iteration::bind_iteration_target;
 use super::SymbolCollector;
@@ -22,6 +23,7 @@ impl SymbolCollector<'_> {
             }
             for guard in &generator.ifs {
                 self.collect_expr_references(owner, guard, &scoped_types);
+                apply_comprehension_guard_narrowing(guard, &mut scoped_types);
             }
         }
         self.collect_expr_references(owner, &list_comp.elt, &scoped_types);
@@ -41,10 +43,31 @@ impl SymbolCollector<'_> {
             }
             for guard in &generator.ifs {
                 self.collect_expr_references(owner, guard, &scoped_types);
+                apply_comprehension_guard_narrowing(guard, &mut scoped_types);
             }
         }
         self.collect_expr_references(owner, &dict_comp.key, &scoped_types);
         self.collect_expr_references(owner, &dict_comp.value, &scoped_types);
+    }
+
+    pub(super) fn collect_generator_references(
+        &mut self,
+        owner: &str,
+        generator_exp: &ast::ExprGenerator,
+        types: &HashMap<String, TypeBinding>,
+    ) {
+        let mut scoped_types = types.clone();
+        for generator in &generator_exp.generators {
+            self.collect_expr_references(owner, &generator.iter, &scoped_types);
+            if let Some(item_type) = self.iteration_item_type(&generator.iter, &scoped_types) {
+                bind_comprehension_target(&generator.target, &item_type, &mut scoped_types);
+            }
+            for guard in &generator.ifs {
+                self.collect_expr_references(owner, guard, &scoped_types);
+                apply_comprehension_guard_narrowing(guard, &mut scoped_types);
+            }
+        }
+        self.collect_expr_references(owner, &generator_exp.elt, &scoped_types);
     }
 
     pub(super) fn collect_fstring_references(

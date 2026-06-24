@@ -125,9 +125,14 @@ fn collect_class_fields(
     for base in &class_info.bases {
         collect_class_fields(classes, &base.base, fields, visited);
     }
-    fields.extend(class_info.fields.iter().map(|field| match &field.annotation {
-        FieldAnnotation::Concrete(binding) => (field.name.clone(), binding.clone()),
-    }));
+    fields.extend(
+        class_info
+            .fields
+            .iter()
+            .map(|field| match &field.annotation {
+                FieldAnnotation::Concrete(binding) => (field.name.clone(), binding.clone()),
+            }),
+    );
 }
 
 fn is_transparent_container(type_name: &str) -> bool {
