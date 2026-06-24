@@ -157,11 +157,22 @@ impl SymbolCollector<'_> {
                 for handler in &try_stmt.handlers {
                     match handler {
                         ast::ExceptHandler::ExceptHandler(handler) => {
+                            let mut handler_types = types.clone();
                             if let Some(type_) = &handler.type_ {
                                 self.collect_expr_references(owner, type_, types);
+                                if let (Some(name), Some(binding)) = (
+                                    handler.name.as_ref(),
+                                    type_binding_from_expr(self.module, self.imports, type_),
+                                ) {
+                                    handler_types.insert(name.as_str().to_string(), binding);
+                                }
                             }
                             for nested in &handler.body {
-                                self.collect_statement_references(owner, nested, types);
+                                self.collect_statement_references(
+                                    owner,
+                                    nested,
+                                    &mut handler_types,
+                                );
                             }
                         }
                     }
