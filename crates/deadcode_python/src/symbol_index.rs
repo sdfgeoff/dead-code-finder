@@ -61,7 +61,7 @@ pub struct IndexedSymbol {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassInfo {
     pub class: String,
-    pub bases: Vec<String>,
+    pub bases: Vec<TypeBinding>,
     pub type_params: Vec<String>,
     pub fields: Vec<ClassFieldInfo>,
 }

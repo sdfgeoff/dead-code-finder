@@ -45,6 +45,7 @@ impl SymbolCollector<'_> {
                     constructor_binding(self.module, self.imports, self.rules, &assign.value)
                         .or_else(|| expr_type(self.available_classes, &assign.value, types))
                         .or_else(|| self.local_call_return_binding(&assign.value, types))
+                        .or_else(|| self.fluent_self_call_binding(&assign.value, types))
                         .or_else(|| self.external_call_result_binding(&assign.value, types))
                 {
                     self.mark_external_if_outside_project(&mut type_name);

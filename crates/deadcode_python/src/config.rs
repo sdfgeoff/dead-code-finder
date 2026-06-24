@@ -49,6 +49,8 @@ pub struct RuleConfig {
     #[serde(default)]
     pub calls: Vec<CallRule>,
     #[serde(default)]
+    pub fluent_methods: Vec<FluentMethodRule>,
+    #[serde(default)]
     pub route_globs: Vec<RouteGlobRule>,
 }
 
@@ -79,6 +81,13 @@ pub struct CallRule {
     pub method: Option<String>,
     pub effect: String,
     pub argument: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FluentMethodRule {
+    pub receiver_type: String,
+    pub methods: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -230,6 +239,18 @@ fn validate_rules(rules: &RuleConfig) -> Result<(), ConfigError> {
         ) {
             return Err(ConfigError::InvalidRule {
                 message: format!("unsupported call effect {}", call.effect),
+            });
+        }
+    }
+    for fluent_method in &rules.fluent_methods {
+        if fluent_method.receiver_type.trim().is_empty() {
+            return Err(ConfigError::InvalidRule {
+                message: "fluent method receiverType must not be empty".to_string(),
+            });
+        }
+        if fluent_method.methods.is_empty() {
+            return Err(ConfigError::InvalidRule {
+                message: "fluent method methods must not be empty".to_string(),
             });
         }
     }

@@ -134,6 +134,16 @@ fn mapping_get_results_resolve_value_fields() {
 }
 
 #[test]
+fn fluent_external_base_methods_preserve_receiver_type() {
+    let report = analyze_fixture("fluent_external_base_methods_preserve_receiver_type");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.settings.Config.host".to_string()));
+    assert!(symbols.contains(&"pkg.settings.Config.unused".to_string()));
+}
+
+#[test]
 fn scripts_inheritance_generics_and_unresolved_receivers_are_reported() {
     let report = analyze_fixture("scripts_inheritance_generics_and_unresolved_receivers");
     let symbols = finding_symbols(&report);

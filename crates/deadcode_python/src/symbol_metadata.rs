@@ -21,7 +21,7 @@ pub(super) fn class_info(
             arguments
                 .args
                 .iter()
-                .filter_map(|base| type_name_from_expr(module, imports, base))
+                .filter_map(|base| type_binding_from_expr(module, imports, base))
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();

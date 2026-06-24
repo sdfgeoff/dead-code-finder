@@ -407,7 +407,9 @@ fn lookup_member_inner(
     }
     let class_info = class_map.get(class_name)?;
     for base in &class_info.bases {
-        if let Some(target) = lookup_member_inner(base, member, symbol_kinds, class_map, visited) {
+        if let Some(target) =
+            lookup_member_inner(&base.base, member, symbol_kinds, class_map, visited)
+        {
             return Some(target);
         }
     }
@@ -437,10 +439,9 @@ fn is_subclass_inner(
     let Some(class_info) = class_map.get(concrete_type) else {
         return false;
     };
-    class_info
-        .bases
-        .iter()
-        .any(|base| base == base_type || is_subclass_inner(base, base_type, class_map, visited))
+    class_info.bases.iter().any(|base| {
+        base.base == base_type || is_subclass_inner(&base.base, base_type, class_map, visited)
+    })
 }
 
 fn mark_symbol_owners_live(live: &mut HashSet<String>, symbol_kinds: &HashMap<String, SymbolKind>) {
