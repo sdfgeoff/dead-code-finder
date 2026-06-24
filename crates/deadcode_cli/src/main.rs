@@ -15,7 +15,13 @@ fn main() -> ExitCode {
         }
     };
 
-    let report = analyze_project(&AnalyzeOptions::new(config_path));
+    let report = match analyze_project(&AnalyzeOptions::new(config_path)) {
+        Ok(report) => report,
+        Err(error) => {
+            eprintln!("dead-code-finder: {error}");
+            return ExitCode::from(2);
+        }
+    };
     let summary = report.summary();
 
     println!(
