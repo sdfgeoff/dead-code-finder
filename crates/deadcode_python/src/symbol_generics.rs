@@ -260,6 +260,9 @@ fn is_none_type(type_name: &str) -> bool {
 }
 
 pub(super) fn collection_item_type(collection_type: &TypeBinding) -> Option<TypeBinding> {
+    if let Some(inner) = non_none_union_member(collection_type) {
+        return collection_item_type(inner);
+    }
     if is_mapping_collection(&collection_type.base) {
         return collection_type.args.get(1).cloned();
     }

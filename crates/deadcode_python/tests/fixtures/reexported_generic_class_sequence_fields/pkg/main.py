@@ -12,6 +12,11 @@ class Properties:
     unused: int
 
 
+class Overlap:
+    amount: float
+    properties: Properties
+
+
 def total(features: Sequence[Feature[PropertiesType]]) -> list[PropertiesType]:
     feature_list = list(features)
     return [feature.properties for feature in feature_list]
@@ -40,6 +45,18 @@ def zipped_area(features: Sequence[Feature[Properties]]) -> float:
     return results[0]
 
 
+def optional_nested_overlap(overlap_groups: list[list[Overlap]] | None) -> float | None:
+    if overlap_groups is None:
+        return None
+    results = [
+        overlap.amount
+        for feature, overlap_group in zip([], overlap_groups)
+        for overlap in overlap_group
+    ]
+    return results[0]
+
+
 total_area([])
 flattened_area([])
 zipped_area([])
+optional_nested_overlap([])
