@@ -1,12 +1,16 @@
 //! Core report types shared by the analyzer and CLI.
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::Serialize;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Severity {
     Error,
     Warning,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SymbolKind {
     Module,
     Function,
@@ -16,7 +20,7 @@ pub enum SymbolKind {
     Field,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SourceSpan {
     pub file: String,
     pub line: usize,
@@ -33,7 +37,7 @@ impl SourceSpan {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Finding {
     pub code: String,
     pub message: String,
@@ -60,7 +64,7 @@ impl Finding {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Diagnostic {
     pub code: String,
     pub severity: Severity,
@@ -79,7 +83,7 @@ impl Diagnostic {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 pub struct AnalysisReport {
     pub findings: Vec<Finding>,
     pub diagnostics: Vec<Diagnostic>,
@@ -98,7 +102,7 @@ impl AnalysisReport {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct ReportSummary {
     pub findings: usize,
     pub diagnostics: usize,

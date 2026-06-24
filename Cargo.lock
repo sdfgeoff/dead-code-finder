@@ -99,11 +99,16 @@ version = "0.1.0"
 dependencies = [
  "deadcode_core",
  "deadcode_python",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "deadcode_core"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "deadcode_python"
