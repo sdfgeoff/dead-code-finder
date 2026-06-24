@@ -6,7 +6,7 @@ use crate::symbol_index::{
 };
 
 use super::symbol_expr::self_attribute_name;
-use super::symbol_types::type_binding_from_expr;
+use super::symbol_types::{type_binding_from_annotation_expr, type_binding_from_expr};
 
 pub(super) fn class_info(
     module: &str,
@@ -48,9 +48,9 @@ pub(super) fn function_signature(
             let parameter = parameter.as_parameter();
             FunctionParameter {
                 name: parameter.name.as_str().to_string(),
-                annotation: parameter
-                    .annotation()
-                    .and_then(|annotation| type_binding_from_expr(module, imports, annotation)),
+                annotation: parameter.annotation().and_then(|annotation| {
+                    type_binding_from_annotation_expr(module, imports, annotation)
+                }),
             }
         })
         .collect();
@@ -60,7 +60,7 @@ pub(super) fn function_signature(
         return_type: function_def
             .returns
             .as_ref()
-            .and_then(|returns| type_binding_from_expr(module, imports, returns)),
+            .and_then(|returns| type_binding_from_annotation_expr(module, imports, returns)),
     }
 }
 
@@ -196,7 +196,7 @@ fn init_self_fields(
                 .filter_map(|parameter| {
                     let parameter = parameter.as_parameter();
                     let annotation = parameter.annotation()?;
-                    let type_name = type_binding_from_expr(module, imports, annotation)?;
+                    let type_name = type_binding_from_annotation_expr(module, imports, annotation)?;
                     Some((parameter.name.as_str().to_string(), type_name))
                 })
                 .collect::<Vec<_>>();
@@ -236,7 +236,7 @@ fn init_self_field(
         }
         ast::Stmt::AnnAssign(assign) => {
             let field_name = self_attribute_name(&assign.target)?;
-            let type_name = type_binding_from_expr(module, imports, &assign.annotation)?;
+            let type_name = type_binding_from_annotation_expr(module, imports, &assign.annotation)?;
             (field_name, type_name)
         }
         _ => return None,
@@ -253,7 +253,7 @@ fn field_annotation(
     annotation: &ast::Expr,
     type_params: &[String],
 ) -> Option<FieldAnnotation> {
-    let mut binding = type_binding_from_expr(module, imports, annotation)?;
+    let mut binding = type_binding_from_annotation_expr(module, imports, annotation)?;
     rewrite_type_params(module, &mut binding, type_params);
     Some(FieldAnnotation::Concrete(binding))
 }

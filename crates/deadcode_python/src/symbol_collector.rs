@@ -48,7 +48,7 @@ use self::symbol_fields::collect_self_assignments;
 use self::symbol_imports::{collect_import, collect_import_from};
 use self::symbol_metadata::{class_info, function_signature};
 use self::symbol_rules::decorator_registers_function;
-use self::symbol_types::type_binding_from_expr;
+use self::symbol_types::type_binding_from_annotation_expr;
 use super::{
     CallArgumentType, ClassInfo, FunctionSignature, IndexedSymbol, MemberReference, ResolvedImport,
     SourceLocator, SymbolReference, TypeBinding, UnresolvedReceiver, UnsupportedExpansion,
@@ -376,5 +376,5 @@ fn type_binding_from_annotation(
             return Some(binding.clone());
         }
     }
-    type_binding_from_expr(module, imports, annotation)
+    type_binding_from_annotation_expr(module, imports, annotation)
 }

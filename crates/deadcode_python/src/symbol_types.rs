@@ -32,6 +32,19 @@ pub(super) fn type_binding_from_expr(
     }
 }
 
+pub(super) fn type_binding_from_annotation_expr(
+    module: &str,
+    imports: &[ResolvedImport],
+    expr: &ast::Expr,
+) -> Option<TypeBinding> {
+    match expr {
+        ast::Expr::StringLiteral(string) => {
+            type_binding_from_annotation_string(module, imports, string.value.to_str())
+        }
+        _ => type_binding_from_expr(module, imports, expr),
+    }
+}
+
 pub(super) fn type_name_from_expr(
     module: &str,
     imports: &[ResolvedImport],
@@ -57,6 +70,32 @@ pub(super) fn type_name_from_expr(
         ast::Expr::Subscript(subscript) => type_name_from_expr(module, imports, &subscript.value),
         _ => None,
     }
+}
+
+fn type_binding_from_annotation_string(
+    module: &str,
+    imports: &[ResolvedImport],
+    annotation: &str,
+) -> Option<TypeBinding> {
+    if annotation.is_empty() || annotation.contains('[') || annotation.contains('|') {
+        return None;
+    }
+    if let Some((head, tail)) = annotation.split_once('.') {
+        for import in imports {
+            if import.binding != head {
+                continue;
+            }
+            return match &import.target {
+                ImportTarget::Module { module, external } => Some(TypeBinding {
+                    base: format!("{module}.{tail}"),
+                    args: Vec::new(),
+                    external: *external,
+                }),
+                ImportTarget::Symbol { .. } | ImportTarget::Star { .. } => None,
+            };
+        }
+    }
+    resolve_name_to_type_binding(module, imports, annotation)
 }
 
 fn type_binding_from_name_expr(
