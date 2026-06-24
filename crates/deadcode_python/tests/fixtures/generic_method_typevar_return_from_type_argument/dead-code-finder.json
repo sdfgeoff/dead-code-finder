@@ -1,0 +1,12 @@
+{
+  "roots": [{ "path": "pkg", "module": "pkg" }],
+  "entrypoints": ["pkg/main.py"],
+  "rules": {
+    "constructors": [
+      {
+        "match": "pkg.service.get_client",
+        "producesType": "pkg.service.Client"
+      }
+    ]
+  }
+}

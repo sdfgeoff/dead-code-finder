@@ -1,11 +1,12 @@
 use ruff_python_ast as ast;
 
 use crate::symbol_index::{
-    ClassFieldInfo, ClassInfo, FieldAnnotation, FunctionSignature, ResolvedImport, TypeBinding,
+    ClassFieldInfo, ClassInfo, FieldAnnotation, FunctionParameter, FunctionSignature,
+    ResolvedImport, TypeBinding,
 };
 
 use super::symbol_expr::self_attribute_name;
-use super::symbol_types::{type_binding_from_expr, type_name_from_expr};
+use super::symbol_types::type_binding_from_expr;
 
 pub(super) fn class_info(
     module: &str,
@@ -40,19 +41,22 @@ pub(super) fn function_signature(
     function: &str,
     function_def: &ast::StmtFunctionDef,
 ) -> FunctionSignature {
-    let parameter_types = function_def
+    let parameters = function_def
         .parameters
         .iter()
         .map(|parameter| {
-            parameter
-                .as_parameter()
-                .annotation()
-                .and_then(|annotation| type_name_from_expr(module, imports, annotation))
+            let parameter = parameter.as_parameter();
+            FunctionParameter {
+                name: parameter.name.as_str().to_string(),
+                annotation: parameter
+                    .annotation()
+                    .and_then(|annotation| type_binding_from_expr(module, imports, annotation)),
+            }
         })
         .collect();
     FunctionSignature {
         function: function.to_string(),
-        parameter_types,
+        parameters,
         return_type: function_def
             .returns
             .as_ref()

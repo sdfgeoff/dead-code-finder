@@ -159,7 +159,10 @@ fn compute_live_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<Strin
             let Some(signature) = signature_map.get(call_argument.callee.as_str()) else {
                 continue;
             };
-            let Some(Some(base_type)) = signature.parameter_types.get(call_argument.position)
+            let Some(Some(base_type)) = signature
+                .parameters
+                .get(call_argument.position)
+                .map(|parameter| parameter.annotation.as_ref().map(|binding| &binding.base))
             else {
                 continue;
             };

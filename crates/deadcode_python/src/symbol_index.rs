@@ -103,8 +103,14 @@ pub struct ValueBinding {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionSignature {
     pub function: String,
-    pub parameter_types: Vec<Option<String>>,
+    pub parameters: Vec<FunctionParameter>,
     pub return_type: Option<TypeBinding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionParameter {
+    pub name: String,
+    pub annotation: Option<TypeBinding>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -144,6 +144,16 @@ fn fluent_external_base_methods_preserve_receiver_type() {
 }
 
 #[test]
+fn generic_method_typevar_return_from_type_argument() {
+    let report = analyze_fixture("generic_method_typevar_return_from_type_argument");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.service.Model.field".to_string()));
+    assert!(symbols.contains(&"pkg.service.Model.unused".to_string()));
+}
+
+#[test]
 fn scripts_inheritance_generics_and_unresolved_receivers_are_reported() {
     let report = analyze_fixture("scripts_inheritance_generics_and_unresolved_receivers");
     let symbols = finding_symbols(&report);
