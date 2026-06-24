@@ -219,6 +219,13 @@ fn string_methods_and_unpacking_bind_builtin_types() {
 }
 
 #[test]
+fn optional_string_split_items_resolve_methods() {
+    let report = analyze_fixture("optional_string_split_items_resolve_methods");
+
+    assert!(report.diagnostics.is_empty());
+}
+
+#[test]
 fn builtin_constructor_method_chain_unpack() {
     let report = analyze_fixture("builtin_constructor_method_chain_unpack");
 

@@ -324,6 +324,7 @@ fn builtin_method_call_type(
         return None;
     };
     let receiver_type = expr_type(classes, &attribute.value, types)?;
+    let receiver_type = non_none_union_member(&receiver_type).unwrap_or(&receiver_type);
     match (receiver_type.base.as_str(), attribute.attr.as_str()) {
         ("str", "split" | "rsplit") => Some(TypeBinding {
             base: "list".to_string(),
@@ -337,6 +338,15 @@ fn builtin_method_call_type(
         ("str", "startswith") => Some(TypeBinding::erased("bool".to_string())),
         _ => None,
     }
+}
+
+fn non_none_union_member(binding: &TypeBinding) -> Option<&TypeBinding> {
+    if !is_union_type(&binding.base) {
+        return None;
+    }
+    let mut non_none = binding.args.iter().filter(|arg| !is_none_type(&arg.base));
+    let member = non_none.next()?;
+    non_none.next().is_none().then_some(member)
 }
 
 fn callable_call_return_type(
