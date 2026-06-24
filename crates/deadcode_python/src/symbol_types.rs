@@ -19,17 +19,6 @@ impl TypeBinding {
     }
 }
 
-pub(super) fn constructor_type_name(
-    module: &str,
-    imports: &[ResolvedImport],
-    expr: &ast::Expr,
-) -> Option<String> {
-    let ast::Expr::Call(call) = expr else {
-        return None;
-    };
-    type_name_from_expr(module, imports, &call.func)
-}
-
 pub(super) fn type_binding_from_expr(
     module: &str,
     imports: &[ResolvedImport],

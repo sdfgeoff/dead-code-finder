@@ -41,17 +41,12 @@ impl SymbolCollector<'_> {
                 }
                 if let Some(type_name) =
                     constructor_binding(self.module, self.imports, self.rules, &assign.value)
+                        .or_else(|| field_read_type(self.classes, &assign.value, types))
+                        .or_else(|| self.external_call_result_binding(&assign.value, types))
                 {
                     for target in &assign.targets {
                         if let Some(name) = target_name(target) {
                             types.insert(name.to_string(), type_name.clone());
-                        }
-                    }
-                }
-                if let Some(field_type) = field_read_type(self.classes, &assign.value, types) {
-                    for target in &assign.targets {
-                        if let Some(name) = target_name(target) {
-                            types.insert(name.to_string(), field_type.clone());
                         }
                     }
                 }
@@ -275,6 +270,31 @@ impl SymbolCollector<'_> {
             }
             _ => {}
         }
+    }
+
+    fn external_call_result_binding(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        let ast::Expr::Call(call) = expr else {
+            return None;
+        };
+        let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
+            return None;
+        };
+        let receiver_type = match attribute.value.as_ref() {
+            ast::Expr::Name(receiver) => types
+                .get(receiver.id.as_str())
+                .cloned()
+                .or_else(|| self.class_object_binding(receiver.id.as_str())),
+            value => field_read_type(self.classes, value, types),
+        }?;
+        receiver_type.external.then(|| TypeBinding {
+            base: format!("{}.{}", receiver_type.base, attribute.attr.as_str()),
+            args: Vec::new(),
+            external: true,
+        })
     }
 
     fn collect_context_manager_references(

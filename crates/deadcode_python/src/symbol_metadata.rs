@@ -5,7 +5,7 @@ use crate::symbol_index::{
 };
 
 use super::symbol_expr::self_attribute_name;
-use super::symbol_types::type_name_from_expr;
+use super::symbol_types::{type_binding_from_expr, type_name_from_expr, TypeBinding};
 
 pub(super) fn class_info(
     module: &str,
@@ -122,22 +122,26 @@ fn init_self_fields(
                 .filter_map(|parameter| {
                     let parameter = parameter.as_parameter();
                     let annotation = parameter.annotation()?;
-                    let type_name = type_name_from_expr(module, imports, annotation)?;
+                    let type_name = type_binding_from_expr(module, imports, annotation)?;
                     Some((parameter.name.as_str().to_string(), type_name))
                 })
                 .collect::<Vec<_>>();
             function
                 .body
                 .iter()
-                .filter_map(|statement| init_self_field(statement, &parameter_types))
+                .filter_map(|statement| {
+                    init_self_field(module, imports, statement, &parameter_types)
+                })
                 .collect()
         })
         .unwrap_or_default()
 }
 
 fn init_self_field(
+    module: &str,
+    imports: &[ResolvedImport],
     statement: &ast::Stmt,
-    parameter_types: &[(String, String)],
+    parameter_types: &[(String, TypeBinding)],
 ) -> Option<ClassFieldInfo> {
     let ast::Stmt::Assign(assign) = statement else {
         return None;
@@ -147,15 +151,20 @@ fn init_self_field(
     }
     let target = assign.targets.first()?;
     let field_name = self_attribute_name(target)?;
-    let ast::Expr::Name(value) = assign.value.as_ref() else {
-        return None;
+    let type_name = match assign.value.as_ref() {
+        ast::Expr::Name(value) => parameter_types
+            .iter()
+            .find(|(parameter, _)| parameter == value.id.as_str())
+            .map(|(_, type_name)| type_name.clone())?,
+        ast::Expr::Call(call) => type_binding_from_expr(module, imports, &call.func)?,
+        _ => return None,
     };
-    let (_, type_name) = parameter_types
-        .iter()
-        .find(|(parameter, _)| parameter == value.id.as_str())?;
     Some(ClassFieldInfo {
         name: field_name.to_string(),
-        annotation: FieldAnnotation::Concrete(type_name.clone()),
+        annotation: FieldAnnotation::Concrete {
+            type_name: type_name.base,
+            external: type_name.external,
+        },
     })
 }
 
@@ -171,7 +180,10 @@ fn field_annotation(
             return Some(FieldAnnotation::TypeParam(name.to_string()));
         }
     }
-    type_name_from_expr(module, imports, annotation).map(FieldAnnotation::Concrete)
+    type_binding_from_expr(module, imports, annotation).map(|binding| FieldAnnotation::Concrete {
+        type_name: binding.base,
+        external: binding.external,
+    })
 }
 
 fn target_name(expr: &ast::Expr) -> Option<&str> {

@@ -71,7 +71,7 @@ pub struct ClassFieldInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FieldAnnotation {
-    Concrete(String),
+    Concrete { type_name: String, external: bool },
     TypeParam(String),
 }
 

@@ -6,7 +6,7 @@ use ruff_text_size::TextRange;
 use crate::config::RuleConfig;
 use crate::symbol_index::{ImportTarget, ResolvedImport};
 
-use super::symbol_types::{constructor_type_name, type_name_from_expr, TypeBinding};
+use super::symbol_types::{type_binding_from_expr, type_name_from_expr, TypeBinding};
 
 pub(super) fn decorator_registers_function(
     rules: &RuleConfig,
@@ -44,9 +44,11 @@ pub(super) fn constructor_binding(
     let ast::Expr::Call(call) = expr else {
         return None;
     };
-    constructed_type_from_callee(module, imports, rules, &call.func)
-        .or_else(|| constructor_type_name(module, imports, expr))
-        .map(TypeBinding::erased)
+    if let Some(constructed_type) = constructed_type_from_callee(module, imports, rules, &call.func)
+    {
+        return Some(TypeBinding::erased(constructed_type));
+    }
+    type_binding_from_expr(module, imports, &call.func)
 }
 
 pub(super) fn constructed_type_from_callee(

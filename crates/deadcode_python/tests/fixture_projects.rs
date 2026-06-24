@@ -72,6 +72,13 @@ fn context_managers_and_weak_scripts_are_tracked_separately() {
 }
 
 #[test]
+fn external_type_flows_suppress_unresolved_receivers() {
+    let report = analyze_fixture("external_type_flows_suppress_unresolved_receivers");
+
+    assert!(report.diagnostics.is_empty());
+}
+
+#[test]
 fn scripts_inheritance_generics_and_unresolved_receivers_are_reported() {
     let report = analyze_fixture("scripts_inheritance_generics_and_unresolved_receivers");
     let symbols = finding_symbols(&report);

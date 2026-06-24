@@ -26,7 +26,14 @@ pub(super) fn field_read_type(
         .iter()
         .find(|field| field.name == attribute.attr.as_str())?;
     match &field.annotation {
-        FieldAnnotation::Concrete(type_name) => Some(TypeBinding::erased(type_name.clone())),
+        FieldAnnotation::Concrete {
+            type_name,
+            external,
+        } => Some(TypeBinding {
+            base: type_name.clone(),
+            args: Vec::new(),
+            external: *external,
+        }),
         FieldAnnotation::TypeParam(type_param) => class_info
             .type_params
             .iter()
