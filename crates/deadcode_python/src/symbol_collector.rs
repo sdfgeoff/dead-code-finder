@@ -10,6 +10,8 @@ mod symbol_fields;
 mod symbol_generics;
 #[path = "symbol_imports.rs"]
 mod symbol_imports;
+#[path = "symbol_interpolation.rs"]
+mod symbol_interpolation;
 #[path = "symbol_iteration.rs"]
 mod symbol_iteration;
 #[path = "symbol_members.rs"]

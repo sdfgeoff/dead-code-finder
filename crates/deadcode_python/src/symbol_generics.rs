@@ -286,7 +286,7 @@ fn builtin_method_call_type(
             args: vec![TypeBinding::erased("str".to_string())],
             external: false,
         }),
-        ("str", "strip" | "replace") | ("bytes", "decode") => {
+        ("str", "join" | "strip" | "replace") | ("bytes", "decode") => {
             Some(TypeBinding::erased("str".to_string()))
         }
         ("str", "encode") => Some(TypeBinding::erased("bytes".to_string())),

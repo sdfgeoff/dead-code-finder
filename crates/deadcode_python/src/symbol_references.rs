@@ -219,6 +219,9 @@ impl SymbolCollector<'_> {
                     self.collect_expr_references(owner, element, types);
                 }
             }
+            ast::Expr::ListComp(list_comp) => {
+                self.collect_list_comprehension_references(owner, list_comp, types);
+            }
             ast::Expr::Set(set) => {
                 for element in &set.elts {
                     self.collect_expr_references(owner, element, types);
@@ -232,6 +235,7 @@ impl SymbolCollector<'_> {
                     self.collect_expr_references(owner, &item.value, types);
                 }
             }
+            ast::Expr::FString(f_string) => self.collect_fstring_references(owner, f_string, types),
             _ => {}
         }
     }

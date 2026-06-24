@@ -209,6 +209,19 @@ fn string_methods_and_unpacking_bind_builtin_types() {
 }
 
 #[test]
+fn string_join_result_is_string() {
+    let report = analyze_fixture("string_join_result_is_string");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.ExampleItem.example_item_id".to_string()));
+    assert!(!symbols.contains(&"pkg.main.ExampleItem.version_id".to_string()));
+    assert!(!symbols.contains(&"pkg.main.ExampleCollection.example_items".to_string()));
+    assert!(symbols.contains(&"pkg.main.ExampleItem.unused".to_string()));
+    assert!(symbols.contains(&"pkg.main.ExampleCollection.unused".to_string()));
+}
+
+#[test]
 fn awaited_mapping_subscript_resolves_generic_item_fields() {
     let report = analyze_fixture("awaited_mapping_subscript_resolves_generic_item_fields");
     let symbols = finding_symbols(&report);
