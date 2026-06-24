@@ -123,6 +123,7 @@ pub(super) fn expr_type(
         ast::Expr::Call(call) => builtin_constructor_call_type(classes, call, types)
             .or_else(|| zip_call_type(classes, call, types))
             .or_else(|| mapping_items_call_type(classes, call, types))
+            .or_else(|| mapping_values_call_type(classes, call, types))
             .or_else(|| mapping_value_call_type(classes, call, types))
             .or_else(|| builtin_method_call_type(classes, call, types))
             .or_else(|| callable_call_return_type(classes, call, types))
@@ -137,7 +138,7 @@ pub(super) fn expr_type(
         ast::Expr::Dict(dict) => dict_type(classes, &dict.items, types),
         ast::Expr::DictComp(dict_comp) => dict_comprehension_type(classes, dict_comp, types),
         ast::Expr::NoneLiteral(_) => Some(TypeBinding::erased("None".to_string())),
-        ast::Expr::StringLiteral(_) => Some(TypeBinding {
+        ast::Expr::StringLiteral(_) | ast::Expr::FString(_) => Some(TypeBinding {
             base: "str".to_string(),
             args: Vec::new(),
             external: false,
@@ -348,6 +349,28 @@ fn mapping_value_call_type(
         return receiver_type.args.get(1).cloned();
     }
     None
+}
+
+fn mapping_values_call_type(
+    classes: &[ClassInfo],
+    call: &ast::ExprCall,
+    types: &HashMap<String, TypeBinding>,
+) -> Option<TypeBinding> {
+    let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
+        return None;
+    };
+    if attribute.attr.as_str() != "values" {
+        return None;
+    }
+    let receiver_type = expr_type(classes, &attribute.value, types)?;
+    if !is_mapping_collection(&receiver_type.base) {
+        return None;
+    }
+    Some(TypeBinding {
+        base: "list".to_string(),
+        args: receiver_type.args.get(1).cloned().into_iter().collect(),
+        external: false,
+    })
 }
 
 fn builtin_method_call_type(
