@@ -93,6 +93,19 @@ fn local_call_list_comprehension_result_type() {
 }
 
 #[test]
+fn local_call_list_literal_item_type() {
+    let report = analyze_fixture("local_call_list_literal_item_type");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Feature.properties".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Feature.geometry".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Properties.label".to_string()));
+    assert!(symbols.contains(&"pkg.main.Feature.unused".to_string()));
+    assert!(symbols.contains(&"pkg.main.Properties.unused".to_string()));
+}
+
+#[test]
 fn empty_list_append_infers_list_type() {
     let report = analyze_fixture("empty_list_append_infers_list_type");
     let symbols = finding_symbols(&report);

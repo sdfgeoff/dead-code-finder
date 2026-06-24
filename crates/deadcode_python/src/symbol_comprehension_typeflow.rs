@@ -8,6 +8,22 @@ use super::SymbolCollector;
 use crate::symbol_index::TypeBinding;
 
 impl SymbolCollector<'_> {
+    pub(super) fn list_literal_flow_binding(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        let ast::Expr::List(list) = expr else {
+            return None;
+        };
+        let item_type = self.list_literal_item_type(&list.elts, types)?;
+        Some(TypeBinding {
+            base: "list".to_string(),
+            args: vec![item_type],
+            external: false,
+        })
+    }
+
     pub(super) fn list_comprehension_flow_binding(
         &self,
         expr: &ast::Expr,
@@ -49,6 +65,25 @@ impl SymbolCollector<'_> {
             ],
             external: false,
         })
+    }
+
+    fn list_literal_item_type(
+        &self,
+        elements: &[ast::Expr],
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        let mut item_type = None;
+        for element in elements {
+            let element_type = self.expression_flow_binding(element, types)?;
+            if item_type
+                .as_ref()
+                .is_some_and(|existing: &TypeBinding| existing != &element_type)
+            {
+                return None;
+            }
+            item_type = Some(element_type);
+        }
+        item_type
     }
 }
 

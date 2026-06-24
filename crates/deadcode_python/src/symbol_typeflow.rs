@@ -28,6 +28,7 @@ impl SymbolCollector<'_> {
             .or_else(|| self.json_mapping_call_binding(value, types))
             .or_else(|| self.known_call_result_binding(value))
             .or_else(|| factory_return_binding(self.module, self.imports, self.rules, value))
+            .or_else(|| self.list_literal_flow_binding(value, types))
             .or_else(|| self.list_comprehension_flow_binding(value, types))
             .or_else(|| self.dict_comprehension_flow_binding(value, types))
             .or_else(|| expr_type(self.available_classes, value, types))
@@ -338,6 +339,7 @@ impl SymbolCollector<'_> {
             .or_else(|| self.json_mapping_call_binding(expr, types))
             .or_else(|| self.known_call_result_binding(expr))
             .or_else(|| constructor_binding(self.module, self.imports, self.rules, expr))
+            .or_else(|| self.list_literal_flow_binding(expr, types))
             .or_else(|| expr_type(self.available_classes, expr, types))
     }
 
