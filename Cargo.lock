@@ -97,6 +97,7 @@ dependencies = [
 name = "deadcode_cli"
 version = "0.1.0"
 dependencies = [
+ "deadcode_core",
  "deadcode_python",
 ]
 

@@ -3,9 +3,11 @@
 use deadcode_core::AnalysisReport;
 
 pub mod config;
+pub mod reachability;
 pub mod symbol_index;
 
 use config::{load_project_config, ConfigError};
+use reachability::find_unused_symbols;
 use symbol_index::{index_project, SymbolIndexError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,13 +43,14 @@ impl std::error::Error for AnalyzeError {}
 pub fn analyze_project(options: &AnalyzeOptions) -> Result<AnalysisReport, AnalyzeError> {
     let config = load_project_config(&options.config_path).map_err(AnalyzeError::Config)?;
     let index = index_project(&config).map_err(AnalyzeError::SymbolIndex)?;
+    let findings = find_unused_symbols(&index);
     let diagnostics = index
         .parse_diagnostics
         .into_iter()
         .map(|diagnostic| diagnostic.into_core_diagnostic())
         .collect();
     Ok(AnalysisReport {
-        findings: Vec::new(),
+        findings,
         diagnostics,
     })
 }
@@ -73,6 +76,41 @@ mod tests {
         .unwrap();
 
         assert!(report.is_clean());
+    }
+
+    #[test]
+    fn analysis_reports_unused_symbols() {
+        let workspace = test_workspace("analysis_reports_unused_symbols");
+        std::fs::create_dir_all(workspace.join("pkg")).unwrap();
+        std::fs::write(
+            workspace.join("pkg/main.py"),
+            r#"
+def live():
+    pass
+
+def dead():
+    pass
+
+live()
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            workspace.join("dead-code-finder.json"),
+            r#"{
+                "roots": [{"path": "pkg", "module": "pkg"}],
+                "entrypoints": ["pkg/main.py"]
+            }"#,
+        )
+        .unwrap();
+
+        let report = analyze_project(&AnalyzeOptions::new(
+            workspace.join("dead-code-finder.json"),
+        ))
+        .unwrap();
+
+        assert_eq!(report.findings.len(), 1);
+        assert_eq!(report.findings[0].symbol, "pkg.main.dead");
     }
 
     fn test_workspace(name: &str) -> std::path::PathBuf {

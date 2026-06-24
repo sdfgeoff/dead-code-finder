@@ -2,6 +2,7 @@ use std::env;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use deadcode_core::{Diagnostic, Finding, Severity};
 use deadcode_python::{analyze_project, AnalyzeOptions};
 
 fn main() -> ExitCode {
@@ -23,6 +24,13 @@ fn main() -> ExitCode {
         }
     };
     let summary = report.summary();
+
+    for diagnostic in &report.diagnostics {
+        print_diagnostic(diagnostic);
+    }
+    for finding in &report.findings {
+        print_finding(finding);
+    }
 
     println!(
         "dead-code-finder: {} finding(s), {} diagnostic(s)",
@@ -62,4 +70,30 @@ fn parse_config_path(args: &[String]) -> Result<PathBuf, String> {
 
 fn print_usage() {
     eprintln!("usage: dead-code-finder [--config dead-code-finder.json]");
+}
+
+fn print_finding(finding: &Finding) {
+    println!(
+        "{}:{}:{} {} {}",
+        finding.span.file, finding.span.line, finding.span.column, finding.code, finding.message
+    );
+}
+
+fn print_diagnostic(diagnostic: &Diagnostic) {
+    println!(
+        "{}:{}:{} {} {}: {}",
+        diagnostic.span.file,
+        diagnostic.span.line,
+        diagnostic.span.column,
+        diagnostic.code,
+        severity_label(&diagnostic.severity),
+        diagnostic.message
+    );
+}
+
+fn severity_label(severity: &Severity) -> &'static str {
+    match severity {
+        Severity::Error => "error",
+        Severity::Warning => "warning",
+    }
 }

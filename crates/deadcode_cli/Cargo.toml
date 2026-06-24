@@ -11,4 +11,5 @@ name = "dead-code-finder"
 path = "src/main.rs"
 
 [dependencies]
+deadcode_core = { path = "../deadcode_core" }
 deadcode_python = { path = "../deadcode_python" }

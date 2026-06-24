@@ -21,6 +21,8 @@ pub struct ModuleIndex {
     pub file: PathBuf,
     pub symbols: Vec<IndexedSymbol>,
     pub imports: Vec<ResolvedImport>,
+    pub references: Vec<SymbolReference>,
+    pub is_entrypoint: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +55,13 @@ pub enum ImportTarget {
         module: String,
         external: bool,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SymbolReference {
+    pub from: String,
+    pub name: String,
+    pub span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,7 +138,12 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
 
         for file in files {
             let module = module_name_for_file(root, &file);
-            let module_index = index_module(&module, &file, &index.known_modules)?;
+            let module_index = index_module(
+                &module,
+                &file,
+                &index.known_modules,
+                is_configured_entrypoint(config, &file),
+            )?;
             index
                 .parse_diagnostics
                 .extend(module_index.parse_diagnostics);
@@ -189,6 +203,7 @@ fn index_module(
     module: &str,
     file: &Path,
     known_modules: &HashSet<String>,
+    is_configured_entrypoint: bool,
 ) -> Result<IndexedModuleResult, SymbolIndexError> {
     let source = fs::read_to_string(file).map_err(|source| SymbolIndexError::ReadFile {
         path: file.to_path_buf(),
@@ -203,6 +218,8 @@ fn index_module(
         span: SourceSpan::new(file_display.clone(), 1, 1),
     }];
     let mut imports = Vec::new();
+    let mut references = Vec::new();
+    let mut has_main_entrypoint = false;
     let mut parse_diagnostics = Vec::new();
 
     match ruff_python_parser::parse_module(&source) {
@@ -214,6 +231,8 @@ fn index_module(
                 locator: &locator,
                 symbols: &mut symbols,
                 imports: &mut imports,
+                references: &mut references,
+                has_main_entrypoint: &mut has_main_entrypoint,
                 known_modules,
             };
             collector.collect_suite(suite);
@@ -234,6 +253,8 @@ fn index_module(
             file: file.to_path_buf(),
             symbols,
             imports,
+            references,
+            is_entrypoint: is_configured_entrypoint || has_main_entrypoint,
         },
         parse_diagnostics,
     })
@@ -245,6 +266,8 @@ struct SymbolCollector<'a> {
     locator: &'a SourceLocator,
     symbols: &'a mut Vec<IndexedSymbol>,
     imports: &'a mut Vec<ResolvedImport>,
+    references: &'a mut Vec<SymbolReference>,
+    has_main_entrypoint: &'a mut bool,
     known_modules: &'a HashSet<String>,
 }
 
@@ -258,12 +281,14 @@ impl SymbolCollector<'_> {
     fn collect_module_statement(&mut self, statement: &ast::Stmt) {
         match statement {
             ast::Stmt::FunctionDef(function) => {
+                let function_owner = format!("{}.{}", self.module, function.name.as_str());
                 self.push_symbol(
-                    format!("{}.{}", self.module, function.name.as_str()),
+                    function_owner.clone(),
                     function.name.as_str(),
                     SymbolKind::Function,
                     function.range,
                 );
+                self.collect_function_references(&function_owner, &function.body);
             }
             ast::Stmt::ClassDef(class_def) => {
                 let class_name = class_def.name.as_str();
@@ -326,7 +351,13 @@ impl SymbolCollector<'_> {
                     self.push_import(binding, target, import_from.range);
                 }
             }
-            _ => {}
+            ast::Stmt::If(if_stmt) if is_main_guard(if_stmt) => {
+                *self.has_main_entrypoint = true;
+                self.collect_statement_references(self.module, statement);
+            }
+            statement => {
+                self.collect_statement_references(self.module, statement);
+            }
         }
     }
 
@@ -342,6 +373,10 @@ impl SymbolCollector<'_> {
                         function.range,
                     );
                     self.collect_self_assignments(class_name, &function.body);
+                    let method_owner = format!("{}.{}.{}", self.module, class_name, method_name);
+                    for statement in &function.body {
+                        self.collect_statement_references(&method_owner, statement);
+                    }
                 }
                 ast::Stmt::AnnAssign(assign) => {
                     if let Some(name) = target_name(&assign.target) {
@@ -437,6 +472,91 @@ impl SymbolCollector<'_> {
         });
     }
 
+    fn push_reference(&mut self, from: &str, name: &str, range: TextRange) {
+        self.references.push(SymbolReference {
+            from: from.to_string(),
+            name: name.to_string(),
+            span: self.locator.span_from_range_string(self.file, range),
+        });
+    }
+
+    fn collect_function_references(&mut self, owner: &str, body: &[ast::Stmt]) {
+        for statement in body {
+            self.collect_statement_references(owner, statement);
+        }
+    }
+
+    fn collect_statement_references(&mut self, owner: &str, statement: &ast::Stmt) {
+        match statement {
+            ast::Stmt::FunctionDef(function) => {
+                let function_owner = format!("{}.{}", self.module, function.name.as_str());
+                self.collect_function_references(&function_owner, &function.body);
+            }
+            ast::Stmt::ClassDef(_) => {}
+            ast::Stmt::Expr(expr) => self.collect_expr_references(owner, &expr.value),
+            ast::Stmt::Return(ret) => {
+                if let Some(value) = &ret.value {
+                    self.collect_expr_references(owner, value);
+                }
+            }
+            ast::Stmt::Assign(assign) => self.collect_expr_references(owner, &assign.value),
+            ast::Stmt::AnnAssign(assign) => {
+                if let Some(value) = &assign.value {
+                    self.collect_expr_references(owner, value);
+                }
+            }
+            ast::Stmt::If(if_stmt) => {
+                self.collect_expr_references(owner, &if_stmt.test);
+                for nested in &if_stmt.body {
+                    self.collect_statement_references(owner, nested);
+                }
+                for clause in &if_stmt.elif_else_clauses {
+                    if let Some(test) = &clause.test {
+                        self.collect_expr_references(owner, test);
+                    }
+                    for nested in &clause.body {
+                        self.collect_statement_references(owner, nested);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn collect_expr_references(&mut self, owner: &str, expr: &ast::Expr) {
+        match expr {
+            ast::Expr::Name(name) => self.push_reference(owner, name.id.as_str(), name.range),
+            ast::Expr::Call(call) => {
+                self.collect_expr_references(owner, &call.func);
+                for arg in &call.arguments.args {
+                    self.collect_expr_references(owner, arg);
+                }
+                for keyword in &call.arguments.keywords {
+                    self.collect_expr_references(owner, &keyword.value);
+                }
+            }
+            ast::Expr::Attribute(attribute) => {
+                self.collect_expr_references(owner, &attribute.value);
+            }
+            ast::Expr::BinOp(bin_op) => {
+                self.collect_expr_references(owner, &bin_op.left);
+                self.collect_expr_references(owner, &bin_op.right);
+            }
+            ast::Expr::Compare(compare) => {
+                self.collect_expr_references(owner, &compare.left);
+                for comparator in compare.comparators.iter() {
+                    self.collect_expr_references(owner, comparator);
+                }
+            }
+            ast::Expr::BoolOp(bool_op) => {
+                for value in &bool_op.values {
+                    self.collect_expr_references(owner, value);
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn resolve_import_from_base(&self, import_from: &ast::StmtImportFrom) -> Option<String> {
         let imported_module = import_from.module.as_ref().map(ast::Identifier::as_str);
         if import_from.level == 0 {
@@ -455,6 +575,22 @@ impl SymbolCollector<'_> {
         }
         Some(parts.join("."))
     }
+}
+
+fn is_main_guard(if_stmt: &ast::StmtIf) -> bool {
+    let ast::Expr::Compare(compare) = if_stmt.test.as_ref() else {
+        return false;
+    };
+    if !matches!(compare.left.as_ref(), ast::Expr::Name(name) if name.id.as_str() == "__name__") {
+        return false;
+    }
+    if compare.ops.as_ref() != [ast::CmpOp::Eq] {
+        return false;
+    }
+    matches!(
+        compare.comparators.as_ref(),
+        [ast::Expr::StringLiteral(value)] if value.value.to_str() == "__main__"
+    )
 }
 
 fn first_module_segment(module: &str) -> String {
@@ -488,6 +624,13 @@ fn module_name_for_file(root: &ResolvedRoot, file: &Path) -> String {
         .collect::<Vec<_>>();
     parts.insert(0, root.module.clone());
     parts.join(".")
+}
+
+fn is_configured_entrypoint(config: &LoadedProjectConfig, file: &Path) -> bool {
+    config.entrypoints.iter().any(|entrypoint| {
+        let configured = config.project_dir.join(entrypoint);
+        configured == file
+    })
 }
 
 fn strip_py_extension(part: &str) -> String {
