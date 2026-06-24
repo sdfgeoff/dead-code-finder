@@ -86,7 +86,8 @@ pub(super) fn expr_type(
             collection_item_type(&expr_type(classes, &subscript.value, types)?)
         }
         ast::Expr::Await(await_expr) => expr_type(classes, &await_expr.value, types),
-        ast::Expr::Call(call) => mapping_value_call_type(classes, call, types),
+        ast::Expr::Call(call) => mapping_value_call_type(classes, call, types)
+            .or_else(|| callable_call_return_type(classes, call, types)),
         ast::Expr::List(list) => {
             list_item_type(classes, &list.elts, types).map(|item| TypeBinding {
                 base: "list".to_string(),
@@ -158,6 +159,10 @@ fn is_iterable_collection(type_name: &str) -> bool {
             | "collections.abc.Sequence"
             | "collections.abc.Iterable"
             | "collections.abc.Collection"
+            | "collections.abc.AsyncIterator"
+            | "collections.abc.AsyncIterable"
+            | "typing.AsyncIterator"
+            | "typing.AsyncIterable"
     ) || type_name.ends_with(".list")
         || type_name.ends_with(".set")
         || type_name.ends_with(".tuple")
@@ -206,6 +211,25 @@ fn mapping_value_call_type(
         return receiver_type.args.get(1).cloned();
     }
     None
+}
+
+fn callable_call_return_type(
+    classes: &[ClassInfo],
+    call: &ast::ExprCall,
+    types: &HashMap<String, TypeBinding>,
+) -> Option<TypeBinding> {
+    let callable_type = expr_type(classes, &call.func, types)?;
+    if !is_callable_type(&callable_type.base) {
+        return None;
+    }
+    callable_type.args.last().cloned()
+}
+
+fn is_callable_type(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "typing.Callable" | "collections.abc.Callable" | "Callable"
+    )
 }
 
 fn is_mapping_collection(type_name: &str) -> bool {

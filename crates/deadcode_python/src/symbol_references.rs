@@ -365,7 +365,7 @@ impl SymbolCollector<'_> {
                     .cloned()
                     .or_else(|| self.class_object_binding(receiver_name))
             }
-            value => field_read_type(self.available_classes, value, types),
+            value => expr_type(self.available_classes, value, types),
         };
         if let Some(receiver_type) = receiver_type {
             if receiver_type.external {

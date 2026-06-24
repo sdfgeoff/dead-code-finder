@@ -152,6 +152,18 @@ fn mapping_setdefault_results_resolve_value_fields() {
 }
 
 #[test]
+fn callable_return_async_iterator_resolves_item_fields() {
+    let report = analyze_fixture("callable_return_async_iterator_resolves_item_fields");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Chunk.choices".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Choice.text".to_string()));
+    assert!(symbols.contains(&"pkg.main.Chunk.unused".to_string()));
+    assert!(symbols.contains(&"pkg.main.Choice.unused".to_string()));
+}
+
+#[test]
 fn fluent_external_base_methods_preserve_receiver_type() {
     let report = analyze_fixture("fluent_external_base_methods_preserve_receiver_type");
     let symbols = finding_symbols(&report);
