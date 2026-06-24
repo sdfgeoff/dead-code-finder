@@ -312,6 +312,24 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
         all_function_signatures.extend(module_index.module.function_signatures.clone());
     }
 
+    all_classes.clear();
+    for (file, module) in &project_files {
+        let module_index = index_module(
+            module,
+            file,
+            &index.known_modules,
+            &config.rules,
+            &[],
+            &all_value_bindings,
+            &[],
+            &reexports,
+            false,
+            false,
+            false,
+        )?;
+        all_classes.extend(module_index.module.classes.clone());
+    }
+
     for (file, module) in &project_files {
         let module_index = index_module(
             module,

@@ -2,9 +2,10 @@ use ruff_python_ast as ast;
 
 use crate::symbol_index::{
     ClassFieldInfo, ClassInfo, FieldAnnotation, FunctionParameter, FunctionSignature,
-    ResolvedImport, TypeBinding,
+    ResolvedImport, TypeBinding, ValueBinding,
 };
 
+use super::symbol_aliases::expand_alias_binding;
 use super::symbol_expr::self_attribute_name;
 use super::symbol_types::{type_binding_from_annotation_expr, type_binding_from_expr};
 
@@ -13,6 +14,7 @@ pub(super) fn class_info(
     imports: &[ResolvedImport],
     class: String,
     class_def: &ast::StmtClassDef,
+    values: &[ValueBinding],
 ) -> ClassInfo {
     let type_params = class_type_params(class_def);
     let bases = class_def
@@ -26,7 +28,7 @@ pub(super) fn class_info(
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    let fields = class_fields(module, imports, class_def, &type_params);
+    let fields = class_fields(module, imports, class_def, &type_params, values);
     ClassInfo {
         class,
         bases,
@@ -118,6 +120,7 @@ fn class_fields(
     imports: &[ResolvedImport],
     class_def: &ast::StmtClassDef,
     type_params: &[String],
+    values: &[ValueBinding],
 ) -> Vec<ClassFieldInfo> {
     let mut fields = class_def
         .body
@@ -127,7 +130,8 @@ fn class_fields(
                 return None;
             };
             let name = target_name(&assign.target)?;
-            let annotation = field_annotation(module, imports, &assign.annotation, type_params)?;
+            let annotation =
+                field_annotation(module, imports, &assign.annotation, type_params, values)?;
             Some(ClassFieldInfo {
                 name: name.to_string(),
                 annotation,
@@ -139,7 +143,7 @@ fn class_fields(
             fields.push(field);
         }
     }
-    for field in property_fields(module, imports, class_def, type_params) {
+    for field in property_fields(module, imports, class_def, type_params, values) {
         if !fields.iter().any(|existing| existing.name == field.name) {
             fields.push(field);
         }
@@ -152,6 +156,7 @@ fn property_fields(
     imports: &[ResolvedImport],
     class_def: &ast::StmtClassDef,
     type_params: &[String],
+    values: &[ValueBinding],
 ) -> Vec<ClassFieldInfo> {
     class_def
         .body
@@ -166,7 +171,7 @@ fn property_fields(
                 return None;
             }
             let returns = function.returns.as_ref()?;
-            let annotation = field_annotation(module, imports, returns, type_params)?;
+            let annotation = field_annotation(module, imports, returns, type_params, values)?;
             Some(ClassFieldInfo {
                 name: function.name.as_str().to_string(),
                 annotation,
@@ -252,8 +257,11 @@ fn field_annotation(
     imports: &[ResolvedImport],
     annotation: &ast::Expr,
     type_params: &[String],
+    values: &[ValueBinding],
 ) -> Option<FieldAnnotation> {
     let mut binding = type_binding_from_annotation_expr(module, imports, annotation)?;
+    rewrite_type_params(module, &mut binding, type_params);
+    binding = expand_alias_binding(&binding, values);
     rewrite_type_params(module, &mut binding, type_params);
     Some(FieldAnnotation::Concrete(binding))
 }

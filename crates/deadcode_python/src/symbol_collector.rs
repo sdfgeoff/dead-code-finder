@@ -242,8 +242,13 @@ impl SymbolCollector<'_> {
     }
 
     fn push_class_info(&mut self, class: String, class_def: &ast::StmtClassDef) {
-        self.classes
-            .push(class_info(self.module, self.imports, class, class_def));
+        self.classes.push(class_info(
+            self.module,
+            self.imports,
+            class,
+            class_def,
+            self.available_values,
+        ));
     }
 
     fn push_function_signature(

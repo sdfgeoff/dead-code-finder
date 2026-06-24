@@ -41,6 +41,18 @@ fn max_call_preserves_iterable_item_type() {
     assert!(symbols.contains(&"pkg.main.Properties.unused".to_string()));
 }
 
+#[test]
+fn class_field_alias_expands_for_max_item() {
+    let report = analyze_fixture("class_field_alias_expands_for_max_item");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Properties.amount".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Properties.report_category".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Properties.credit_scheme".to_string()));
+    assert!(symbols.contains(&"pkg.main.Properties.unused".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))

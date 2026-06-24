@@ -3,10 +3,11 @@ use std::collections::HashMap;
 use ruff_python_ast as ast;
 
 use super::super::AccessKind;
+use super::symbol_aliases::expand_alias_binding;
 use super::symbol_generics::{expr_type, member_reference_target_bases};
 use super::symbol_members::push_member_reference;
 use super::SymbolCollector;
-use crate::symbol_index::{ImportTarget, TypeBinding, ValueBinding};
+use crate::symbol_index::{ImportTarget, TypeBinding};
 
 impl SymbolCollector<'_> {
     pub(super) fn collect_member_reference(
@@ -62,36 +63,6 @@ impl SymbolCollector<'_> {
                         .span_from_range_string(self.file, attribute.range),
                 });
         }
-    }
-}
-
-fn expand_alias_binding(binding: &TypeBinding, values: &[ValueBinding]) -> TypeBinding {
-    expand_alias_binding_inner(binding, values, &mut Vec::new())
-}
-
-fn expand_alias_binding_inner(
-    binding: &TypeBinding,
-    values: &[ValueBinding],
-    visited: &mut Vec<String>,
-) -> TypeBinding {
-    if visited.iter().any(|visited| visited == &binding.base) {
-        return binding.clone();
-    }
-    if let Some(alias) = values
-        .iter()
-        .find(|value| value.qualified_name == binding.base)
-    {
-        visited.push(binding.base.clone());
-        return expand_alias_binding_inner(&alias.binding, values, visited);
-    }
-    TypeBinding {
-        base: binding.base.clone(),
-        args: binding
-            .args
-            .iter()
-            .map(|arg| expand_alias_binding_inner(arg, values, visited))
-            .collect(),
-        external: binding.external,
     }
 }
 
