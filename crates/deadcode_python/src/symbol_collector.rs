@@ -1,3 +1,5 @@
+#[path = "symbol_context.rs"]
+mod symbol_context;
 #[path = "symbol_expr.rs"]
 mod symbol_expr;
 #[path = "symbol_fields.rs"]

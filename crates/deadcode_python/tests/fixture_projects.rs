@@ -72,6 +72,13 @@ fn context_managers_and_weak_scripts_are_tracked_separately() {
 }
 
 #[test]
+fn builtin_open_context_manager_suppresses_file_reads() {
+    let report = analyze_fixture("builtin_open_context_manager_suppresses_file_reads");
+
+    assert!(report.diagnostics.is_empty());
+}
+
+#[test]
 fn external_type_flows_suppress_unresolved_receivers() {
     let report = analyze_fixture("external_type_flows_suppress_unresolved_receivers");
 

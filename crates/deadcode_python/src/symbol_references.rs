@@ -4,9 +4,7 @@ use ruff_python_ast as ast;
 use ruff_text_size::Ranged;
 
 use super::symbol_expr::target_name;
-use super::symbol_generics::{
-    expr_type, field_read_type, iterable_item_type, member_reference_target_bases,
-};
+use super::symbol_generics::{expr_type, iterable_item_type, member_reference_target_bases};
 use super::symbol_members::push_member_reference;
 use super::symbol_rules::{
     callable_argument_references, callable_identity, constructed_type_from_callee,
@@ -102,6 +100,11 @@ impl SymbolCollector<'_> {
                     self.collect_context_manager_references(owner, &item.context_expr, types);
                     if let Some(optional_vars) = &item.optional_vars {
                         self.collect_assignment_target(owner, optional_vars, types);
+                        self.bind_context_manager_optional_var(
+                            optional_vars,
+                            &item.context_expr,
+                            types,
+                        );
                     }
                 }
                 for nested in &with_stmt.body {
@@ -318,30 +321,6 @@ impl SymbolCollector<'_> {
                 }
             }
             _ => {}
-        }
-    }
-
-    fn collect_context_manager_references(
-        &mut self,
-        owner: &str,
-        expr: &ast::Expr,
-        types: &HashMap<String, TypeBinding>,
-    ) {
-        let Some(binding) = constructor_binding(self.module, self.imports, self.rules, expr)
-            .or_else(|| field_read_type(self.available_classes, expr, types))
-        else {
-            return;
-        };
-        for method in ["__enter__", "__exit__"] {
-            push_member_reference(
-                self.member_refs,
-                self.locator,
-                self.file,
-                owner,
-                format!("{}.{}", binding.base, method),
-                AccessKind::Call,
-                expr.range(),
-            );
         }
     }
 

@@ -44,6 +44,13 @@ pub(super) fn constructor_binding(
     let ast::Expr::Call(call) = expr else {
         return None;
     };
+    if matches!(call.func.as_ref(), ast::Expr::Name(name) if name.id.as_str() == "open") {
+        return Some(TypeBinding {
+            base: "builtins.open".to_string(),
+            args: Vec::new(),
+            external: true,
+        });
+    }
     if let Some(constructed_type) = constructed_type_from_callee(module, imports, rules, &call.func)
     {
         return Some(TypeBinding::erased(constructed_type));
