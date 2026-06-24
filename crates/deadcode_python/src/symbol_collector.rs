@@ -1,5 +1,7 @@
 #[path = "symbol_expr.rs"]
 mod symbol_expr;
+#[path = "symbol_types.rs"]
+mod symbol_types;
 
 use std::collections::{HashMap, HashSet};
 
@@ -7,12 +9,11 @@ use deadcode_core::SymbolKind;
 use ruff_python_ast as ast;
 use ruff_text_size::TextRange;
 
-use self::symbol_expr::{
-    dotted_expr, first_module_segment, is_main_guard, self_attribute_name, target_name,
-};
+use self::symbol_expr::{first_module_segment, is_main_guard, self_attribute_name, target_name};
+use self::symbol_types::{constructor_type_name, type_name_from_expr};
 use super::{
-    ImportTarget, IndexedSymbol, MemberReference, ResolvedImport, SourceLocator, SymbolReference,
-    UnresolvedReceiver,
+    AccessKind, ImportTarget, IndexedSymbol, MemberReference, ResolvedImport, SourceLocator,
+    SymbolReference, UnresolvedReceiver, UnsupportedExpansion,
 };
 
 pub(super) struct SymbolCollector<'a> {
@@ -24,6 +25,7 @@ pub(super) struct SymbolCollector<'a> {
     pub(super) references: &'a mut Vec<SymbolReference>,
     pub(super) member_references: &'a mut Vec<MemberReference>,
     pub(super) unresolved_receivers: &'a mut Vec<UnresolvedReceiver>,
+    pub(super) unsupported_expansions: &'a mut Vec<UnsupportedExpansion>,
     pub(super) has_main_entrypoint: &'a mut bool,
     pub(super) known_modules: &'a HashSet<String>,
 }
@@ -271,7 +273,12 @@ impl SymbolCollector<'_> {
             }
             ast::Stmt::Assign(assign) => {
                 self.collect_expr_references(owner, &assign.value, types);
-                if let Some(type_name) = self.constructor_type_name(&assign.value) {
+                for target in &assign.targets {
+                    self.collect_assignment_target(owner, target, types);
+                }
+                if let Some(type_name) =
+                    constructor_type_name(self.module, self.imports, &assign.value)
+                {
                     for target in &assign.targets {
                         if let Some(name) = target_name(target) {
                             types.insert(name.to_string(), type_name.clone());
@@ -281,9 +288,13 @@ impl SymbolCollector<'_> {
             }
             ast::Stmt::AnnAssign(assign) => {
                 if let Some(name) = target_name(&assign.target) {
-                    if let Some(type_name) = self.type_name_from_expr(&assign.annotation) {
+                    if let Some(type_name) =
+                        type_name_from_expr(self.module, self.imports, &assign.annotation)
+                    {
                         types.insert(name.to_string(), type_name);
                     }
+                } else {
+                    self.collect_assignment_target(owner, &assign.target, types);
                 }
                 if let Some(value) = &assign.value {
                     self.collect_expr_references(owner, value, types);
@@ -315,17 +326,9 @@ impl SymbolCollector<'_> {
     ) {
         match expr {
             ast::Expr::Name(name) => self.push_reference(owner, name.id.as_str(), name.range),
-            ast::Expr::Call(call) => {
-                self.collect_expr_references(owner, &call.func, types);
-                for arg in &call.arguments.args {
-                    self.collect_expr_references(owner, arg, types);
-                }
-                for keyword in &call.arguments.keywords {
-                    self.collect_expr_references(owner, &keyword.value, types);
-                }
-            }
+            ast::Expr::Call(call) => self.collect_call_references(owner, call, types),
             ast::Expr::Attribute(attribute) => {
-                self.collect_member_reference(owner, attribute, types);
+                self.collect_member_reference(owner, attribute, AccessKind::Read, types);
                 self.collect_expr_references(owner, &attribute.value, types);
             }
             ast::Expr::BinOp(bin_op) => {
@@ -341,6 +344,72 @@ impl SymbolCollector<'_> {
             ast::Expr::BoolOp(bool_op) => {
                 for value in &bool_op.values {
                     self.collect_expr_references(owner, value, types);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn collect_call_references(
+        &mut self,
+        owner: &str,
+        call: &ast::ExprCall,
+        types: &HashMap<String, String>,
+    ) {
+        if let ast::Expr::Attribute(attribute) = call.func.as_ref() {
+            self.collect_member_reference(owner, attribute, AccessKind::Call, types);
+            self.collect_expr_references(owner, &attribute.value, types);
+        } else {
+            self.collect_expr_references(owner, &call.func, types);
+        }
+
+        let constructor_type = type_name_from_expr(self.module, self.imports, &call.func);
+        for arg in &call.arguments.args {
+            self.collect_expr_references(owner, arg, types);
+        }
+        for keyword in &call.arguments.keywords {
+            self.collect_expr_references(owner, &keyword.value, types);
+            let Some(constructor_type) = constructor_type.as_ref() else {
+                continue;
+            };
+            if let Some(arg) = &keyword.arg {
+                self.push_member_reference(
+                    owner,
+                    format!("{constructor_type}.{}", arg.as_str()),
+                    AccessKind::Construct,
+                    keyword.range,
+                );
+            } else {
+                self.unsupported_expansions.push(UnsupportedExpansion {
+                    from: owner.to_string(),
+                    target: constructor_type.clone(),
+                    span: self
+                        .locator
+                        .span_from_range_string(self.file, keyword.range),
+                });
+            }
+        }
+    }
+
+    fn collect_assignment_target(
+        &mut self,
+        owner: &str,
+        target: &ast::Expr,
+        types: &HashMap<String, String>,
+    ) {
+        match target {
+            ast::Expr::Attribute(attribute) => {
+                self.collect_member_reference(owner, attribute, AccessKind::Write, types);
+                self.collect_expr_references(owner, &attribute.value, types);
+            }
+            ast::Expr::Tuple(tuple) => {
+                for element in &tuple.elts {
+                    self.collect_assignment_target(owner, element, types);
+                }
+            }
+            ast::Expr::List(list) => {
+                for element in &list.elts {
+                    self.collect_assignment_target(owner, element, types);
                 }
             }
             _ => {}
@@ -363,7 +432,8 @@ impl SymbolCollector<'_> {
         for parameter in function.parameters.iter() {
             let parameter = parameter.as_parameter();
             if let Some(annotation) = parameter.annotation() {
-                if let Some(type_name) = self.type_name_from_expr(annotation) {
+                if let Some(type_name) = type_name_from_expr(self.module, self.imports, annotation)
+                {
                     types.insert(parameter.name.as_str().to_string(), type_name);
                 }
             }
@@ -371,61 +441,11 @@ impl SymbolCollector<'_> {
         types
     }
 
-    fn constructor_type_name(&self, expr: &ast::Expr) -> Option<String> {
-        let ast::Expr::Call(call) = expr else {
-            return None;
-        };
-        self.type_name_from_expr(&call.func)
-    }
-
-    fn type_name_from_expr(&self, expr: &ast::Expr) -> Option<String> {
-        match expr {
-            ast::Expr::Name(name) => self.resolve_name_to_symbol(name.id.as_str()),
-            ast::Expr::Attribute(attribute) => dotted_expr(attribute).and_then(|dotted| {
-                self.imports.iter().find_map(|import| {
-                    let ImportTarget::Module {
-                        module,
-                        external: false,
-                    } = &import.target
-                    else {
-                        return None;
-                    };
-                    dotted
-                        .strip_prefix(&import.binding)
-                        .and_then(|suffix| suffix.strip_prefix('.'))
-                        .map(|suffix| format!("{module}.{suffix}"))
-                })
-            }),
-            ast::Expr::Subscript(subscript) => self.type_name_from_expr(&subscript.value),
-            _ => None,
-        }
-    }
-
-    fn resolve_name_to_symbol(&self, name: &str) -> Option<String> {
-        for import in self.imports.iter() {
-            if import.binding != name {
-                continue;
-            }
-            return match &import.target {
-                ImportTarget::Symbol {
-                    module,
-                    name,
-                    external: false,
-                } => Some(format!("{module}.{name}")),
-                ImportTarget::Module {
-                    module,
-                    external: false,
-                } => Some(module.clone()),
-                _ => None,
-            };
-        }
-        Some(format!("{}.{}", self.module, name))
-    }
-
     fn collect_member_reference(
         &mut self,
         owner: &str,
         attribute: &ast::ExprAttribute,
+        access: AccessKind,
         types: &HashMap<String, String>,
     ) {
         let ast::Expr::Name(receiver) = attribute.value.as_ref() else {
@@ -438,13 +458,12 @@ impl SymbolCollector<'_> {
             return;
         }
         if let Some(receiver_type) = types.get(receiver_name) {
-            self.member_references.push(MemberReference {
-                from: owner.to_string(),
-                target: format!("{}.{}", receiver_type, attribute.attr.as_str()),
-                span: self
-                    .locator
-                    .span_from_range_string(self.file, attribute.range),
-            });
+            self.push_member_reference(
+                owner,
+                format!("{}.{}", receiver_type, attribute.attr.as_str()),
+                access,
+                attribute.range,
+            );
         } else {
             self.unresolved_receivers.push(UnresolvedReceiver {
                 from: owner.to_string(),
@@ -455,6 +474,21 @@ impl SymbolCollector<'_> {
                     .span_from_range_string(self.file, attribute.range),
             });
         }
+    }
+
+    fn push_member_reference(
+        &mut self,
+        owner: &str,
+        target: String,
+        access: AccessKind,
+        range: TextRange,
+    ) {
+        self.member_references.push(MemberReference {
+            from: owner.to_string(),
+            target,
+            access,
+            span: self.locator.span_from_range_string(self.file, range),
+        });
     }
 
     fn resolve_import_from_base(&self, import_from: &ast::StmtImportFrom) -> Option<String> {

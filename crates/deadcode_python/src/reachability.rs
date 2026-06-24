@@ -59,6 +59,35 @@ pub fn unresolved_receiver_diagnostics(index: &SymbolIndex) -> Vec<Diagnostic> {
     diagnostics
 }
 
+pub fn unsupported_expansion_diagnostics(index: &SymbolIndex) -> Vec<Diagnostic> {
+    let live = compute_live_symbols(index);
+    let mut diagnostics = Vec::new();
+    for module in &index.modules {
+        for expansion in &module.unsupported_expansions {
+            if !live.contains(&expansion.from) {
+                continue;
+            }
+            diagnostics.push(Diagnostic {
+                code: "DCF103".to_string(),
+                severity: Severity::Warning,
+                message: format!(
+                    "cannot expand keyword payload for construction of {}",
+                    expansion.target
+                ),
+                span: expansion.span.clone(),
+            });
+        }
+    }
+    diagnostics.sort_by(|left, right| {
+        left.span
+            .file
+            .cmp(&right.span.file)
+            .then_with(|| left.span.line.cmp(&right.span.line))
+            .then_with(|| left.message.cmp(&right.message))
+    });
+    diagnostics
+}
+
 fn compute_live_symbols(index: &SymbolIndex) -> HashSet<String> {
     let symbol_modules = symbol_module_map(index);
     let symbol_kinds = symbol_kind_map(index);
@@ -402,6 +431,114 @@ process(ExampleEntity())
         let symbols = finding_symbols(&findings);
 
         assert!(!symbols.contains(&"pkg.main.ExampleEntity.save".to_string()));
+    }
+
+    #[test]
+    fn constructor_keywords_mark_only_matching_owner_field_used() {
+        let workspace = test_workspace("constructor_keywords_mark_only_matching_owner_field_used");
+        let package = workspace.join("pkg");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("main.py"),
+            r#"
+class ExampleEntity:
+    name: str
+
+class Other:
+    name: str
+
+def run():
+    ExampleEntity(name="A")
+
+run()
+"#,
+        )
+        .unwrap();
+        let config = loaded_config(
+            &workspace,
+            vec![root(&package, "pkg")],
+            vec!["pkg/main.py".to_string()],
+        );
+
+        let index = index_project(&config).unwrap();
+        let findings = find_unused_symbols(&index);
+        let symbols = finding_symbols(&findings);
+
+        assert!(!symbols.contains(&"pkg.main.ExampleEntity.name".to_string()));
+        assert!(symbols.contains(&"pkg.main.Other.name".to_string()));
+    }
+
+    #[test]
+    fn writes_mark_only_resolved_receiver_field_used() {
+        let workspace = test_workspace("writes_mark_only_resolved_receiver_field_used");
+        let package = workspace.join("pkg");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("main.py"),
+            r#"
+class ExampleEntity:
+    name: str
+
+class Other:
+    name: str
+
+def run(entity: ExampleEntity, other: Other):
+    entity.name = "A"
+
+run(ExampleEntity(), Other())
+"#,
+        )
+        .unwrap();
+        let config = loaded_config(
+            &workspace,
+            vec![root(&package, "pkg")],
+            vec!["pkg/main.py".to_string()],
+        );
+
+        let index = index_project(&config).unwrap();
+        let findings = find_unused_symbols(&index);
+        let symbols = finding_symbols(&findings);
+
+        assert!(!symbols.contains(&"pkg.main.ExampleEntity.name".to_string()));
+        assert!(symbols.contains(&"pkg.main.Other.name".to_string()));
+    }
+
+    #[test]
+    fn unsupported_constructor_expansion_warns_without_field_expansion() {
+        let workspace =
+            test_workspace("unsupported_constructor_expansion_warns_without_field_expansion");
+        let package = workspace.join("pkg");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("main.py"),
+            r#"
+class ExampleEntity:
+    name: str
+
+def run(payload):
+    ExampleEntity(**payload)
+
+run({})
+"#,
+        )
+        .unwrap();
+        let config = loaded_config(
+            &workspace,
+            vec![root(&package, "pkg")],
+            vec!["pkg/main.py".to_string()],
+        );
+
+        let index = index_project(&config).unwrap();
+        let findings = find_unused_symbols(&index);
+        let symbols = finding_symbols(&findings);
+        let diagnostics = unsupported_expansion_diagnostics(&index);
+
+        assert!(symbols.contains(&"pkg.main.ExampleEntity.name".to_string()));
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "DCF103");
+        assert!(diagnostics[0]
+            .message
+            .contains("cannot expand keyword payload for construction of pkg.main.ExampleEntity"));
     }
 
     #[test]

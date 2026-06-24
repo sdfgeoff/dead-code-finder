@@ -28,6 +28,7 @@ pub struct ModuleIndex {
     pub references: Vec<SymbolReference>,
     pub member_references: Vec<MemberReference>,
     pub unresolved_receivers: Vec<UnresolvedReceiver>,
+    pub unsupported_expansions: Vec<UnsupportedExpansion>,
     pub is_entrypoint: bool,
 }
 
@@ -74,7 +75,16 @@ pub struct SymbolReference {
 pub struct MemberReference {
     pub from: String,
     pub target: String,
+    pub access: AccessKind,
     pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AccessKind {
+    Read,
+    Write,
+    Construct,
+    Call,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,6 +92,13 @@ pub struct UnresolvedReceiver {
     pub from: String,
     pub receiver: String,
     pub member: String,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnsupportedExpansion {
+    pub from: String,
+    pub target: String,
     pub span: SourceSpan,
 }
 
@@ -242,6 +259,7 @@ fn index_module(
     let mut references = Vec::new();
     let mut member_references = Vec::new();
     let mut unresolved_receivers = Vec::new();
+    let mut unsupported_expansions = Vec::new();
     let mut has_main_entrypoint = false;
     let mut parse_diagnostics = Vec::new();
 
@@ -257,6 +275,7 @@ fn index_module(
                 references: &mut references,
                 member_references: &mut member_references,
                 unresolved_receivers: &mut unresolved_receivers,
+                unsupported_expansions: &mut unsupported_expansions,
                 has_main_entrypoint: &mut has_main_entrypoint,
                 known_modules,
             };
@@ -281,6 +300,7 @@ fn index_module(
             references,
             member_references,
             unresolved_receivers,
+            unsupported_expansions,
             is_entrypoint: is_configured_entrypoint || has_main_entrypoint,
         },
         parse_diagnostics,

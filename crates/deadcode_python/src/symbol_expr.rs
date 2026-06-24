@@ -20,25 +20,6 @@ pub(super) fn first_module_segment(module: &str) -> String {
     module.split('.').next().unwrap_or(module).to_string()
 }
 
-pub(super) fn dotted_expr(expr: &ast::ExprAttribute) -> Option<String> {
-    let mut parts = vec![expr.attr.as_str().to_string()];
-    let mut value = expr.value.as_ref();
-    loop {
-        match value {
-            ast::Expr::Name(name) => {
-                parts.push(name.id.as_str().to_string());
-                parts.reverse();
-                return Some(parts.join("."));
-            }
-            ast::Expr::Attribute(attribute) => {
-                parts.push(attribute.attr.as_str().to_string());
-                value = attribute.value.as_ref();
-            }
-            _ => return None,
-        }
-    }
-}
-
 pub(super) fn target_name(expr: &ast::Expr) -> Option<&str> {
     match expr {
         ast::Expr::Name(name) => Some(name.id.as_str()),
