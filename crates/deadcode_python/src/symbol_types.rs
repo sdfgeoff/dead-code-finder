@@ -2,6 +2,21 @@ use ruff_python_ast as ast;
 
 use crate::symbol_index::{ImportTarget, ResolvedImport};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct TypeBinding {
+    pub(super) base: String,
+    pub(super) args: Vec<String>,
+}
+
+impl TypeBinding {
+    pub(super) fn erased(base: String) -> Self {
+        Self {
+            base,
+            args: Vec::new(),
+        }
+    }
+}
+
 pub(super) fn constructor_type_name(
     module: &str,
     imports: &[ResolvedImport],
@@ -11,6 +26,23 @@ pub(super) fn constructor_type_name(
         return None;
     };
     type_name_from_expr(module, imports, &call.func)
+}
+
+pub(super) fn type_binding_from_expr(
+    module: &str,
+    imports: &[ResolvedImport],
+    expr: &ast::Expr,
+) -> Option<TypeBinding> {
+    match expr {
+        ast::Expr::Subscript(subscript) => {
+            let base = type_name_from_expr(module, imports, &subscript.value)?;
+            Some(TypeBinding {
+                base,
+                args: type_args_from_expr(module, imports, &subscript.slice),
+            })
+        }
+        _ => type_name_from_expr(module, imports, expr).map(TypeBinding::erased),
+    }
 }
 
 pub(super) fn type_name_from_expr(
@@ -37,6 +69,19 @@ pub(super) fn type_name_from_expr(
         }),
         ast::Expr::Subscript(subscript) => type_name_from_expr(module, imports, &subscript.value),
         _ => None,
+    }
+}
+
+fn type_args_from_expr(module: &str, imports: &[ResolvedImport], expr: &ast::Expr) -> Vec<String> {
+    match expr {
+        ast::Expr::Tuple(tuple) => tuple
+            .elts
+            .iter()
+            .filter_map(|expr| type_name_from_expr(module, imports, expr))
+            .collect(),
+        expr => type_name_from_expr(module, imports, expr)
+            .into_iter()
+            .collect(),
     }
 }
 

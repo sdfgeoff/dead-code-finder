@@ -417,6 +417,86 @@ process(SqlRepository())
     }
 
     #[test]
+    fn generic_receiver_annotations_resolve_methods_on_erased_base() {
+        let workspace =
+            test_workspace("generic_receiver_annotations_resolve_methods_on_erased_base");
+        let package = workspace.join("pkg");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("main.py"),
+            r#"
+class ExampleEntity:
+    pass
+
+class Box[T]:
+    def unpack(self):
+        pass
+
+def process(box: Box[ExampleEntity]):
+    box.unpack()
+
+process(Box())
+"#,
+        )
+        .unwrap();
+        let config = loaded_config(
+            &workspace,
+            vec![root(&package, "pkg")],
+            vec!["pkg/main.py".to_string()],
+        );
+
+        let index = index_project(&config).unwrap();
+        let findings = find_unused_symbols(&index);
+        let symbols = finding_symbols(&findings);
+
+        assert!(!symbols.contains(&"pkg.main.Box.unpack".to_string()));
+    }
+
+    #[test]
+    fn generic_field_type_parameter_substitution_resolves_followup_member_call() {
+        let workspace = test_workspace(
+            "generic_field_type_parameter_substitution_resolves_followup_member_call",
+        );
+        let package = workspace.join("pkg");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("main.py"),
+            r#"
+class ExampleEntity:
+    def save(self):
+        pass
+
+class Other:
+    def save(self):
+        pass
+
+class Box[T]:
+    value: T
+
+def process(box: Box[ExampleEntity]):
+    entity = box.value
+    entity.save()
+
+process(Box())
+"#,
+        )
+        .unwrap();
+        let config = loaded_config(
+            &workspace,
+            vec![root(&package, "pkg")],
+            vec!["pkg/main.py".to_string()],
+        );
+
+        let index = index_project(&config).unwrap();
+        let findings = find_unused_symbols(&index);
+        let symbols = finding_symbols(&findings);
+
+        assert!(!symbols.contains(&"pkg.main.Box.value".to_string()));
+        assert!(!symbols.contains(&"pkg.main.ExampleEntity.save".to_string()));
+        assert!(symbols.contains(&"pkg.main.Other.save".to_string()));
+    }
+
+    #[test]
     fn emits_unresolved_receiver_diagnostic_for_reachable_code() {
         let workspace = test_workspace("emits_unresolved_receiver_diagnostic_for_reachable_code");
         let package = workspace.join("pkg");

@@ -47,6 +47,20 @@ pub struct IndexedSymbol {
 pub struct ClassInfo {
     pub class: String,
     pub bases: Vec<String>,
+    pub type_params: Vec<String>,
+    pub fields: Vec<ClassFieldInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassFieldInfo {
+    pub name: String,
+    pub annotation: FieldAnnotation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FieldAnnotation {
+    Concrete(String),
+    TypeParam(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -300,13 +314,13 @@ fn index_module(
                 symbols: &mut symbols,
                 imports: &mut imports,
                 classes: &mut classes,
-                function_signatures: &mut function_signatures,
-                call_argument_types: &mut call_argument_types,
+                fn_sigs: &mut function_signatures,
+                call_args: &mut call_argument_types,
                 references: &mut references,
-                member_references: &mut member_references,
+                member_refs: &mut member_references,
                 unresolved_receivers: &mut unresolved_receivers,
-                unsupported_expansions: &mut unsupported_expansions,
-                has_main_entrypoint: &mut has_main_entrypoint,
+                unsupported: &mut unsupported_expansions,
+                main_entry: &mut has_main_entrypoint,
                 known_modules,
             };
             collector.collect_suite(suite);

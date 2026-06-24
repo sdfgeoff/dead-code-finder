@@ -2,8 +2,12 @@
 mod symbol_expr;
 #[path = "symbol_fields.rs"]
 mod symbol_fields;
+#[path = "symbol_generics.rs"]
+mod symbol_generics;
 #[path = "symbol_imports.rs"]
 mod symbol_imports;
+#[path = "symbol_members.rs"]
+mod symbol_members;
 #[path = "symbol_metadata.rs"]
 mod symbol_metadata;
 #[path = "symbol_types.rs"]
@@ -17,9 +21,13 @@ use ruff_text_size::{Ranged, TextRange};
 
 use self::symbol_expr::{first_module_segment, is_main_guard, target_name};
 use self::symbol_fields::collect_self_assignments;
+use self::symbol_generics::field_read_type;
 use self::symbol_imports::resolve_import_from_base;
+use self::symbol_members::push_member_reference;
 use self::symbol_metadata::{class_info, function_signature};
-use self::symbol_types::{constructor_type_name, type_name_from_expr};
+use self::symbol_types::{
+    constructor_type_name, type_binding_from_expr, type_name_from_expr, TypeBinding,
+};
 use super::{
     AccessKind, CallArgumentType, ClassInfo, FunctionSignature, ImportTarget, IndexedSymbol,
     MemberReference, ResolvedImport, SourceLocator, SymbolReference, UnresolvedReceiver,
@@ -33,13 +41,13 @@ pub(super) struct SymbolCollector<'a> {
     pub(super) symbols: &'a mut Vec<IndexedSymbol>,
     pub(super) imports: &'a mut Vec<ResolvedImport>,
     pub(super) classes: &'a mut Vec<ClassInfo>,
-    pub(super) function_signatures: &'a mut Vec<FunctionSignature>,
-    pub(super) call_argument_types: &'a mut Vec<CallArgumentType>,
+    pub(super) fn_sigs: &'a mut Vec<FunctionSignature>,
+    pub(super) call_args: &'a mut Vec<CallArgumentType>,
     pub(super) references: &'a mut Vec<SymbolReference>,
-    pub(super) member_references: &'a mut Vec<MemberReference>,
+    pub(super) member_refs: &'a mut Vec<MemberReference>,
     pub(super) unresolved_receivers: &'a mut Vec<UnresolvedReceiver>,
-    pub(super) unsupported_expansions: &'a mut Vec<UnsupportedExpansion>,
-    pub(super) has_main_entrypoint: &'a mut bool,
+    pub(super) unsupported: &'a mut Vec<UnsupportedExpansion>,
+    pub(super) main_entry: &'a mut bool,
     pub(super) known_modules: &'a HashSet<String>,
 }
 
@@ -127,7 +135,7 @@ impl SymbolCollector<'_> {
                 }
             }
             ast::Stmt::If(if_stmt) if is_main_guard(if_stmt) => {
-                *self.has_main_entrypoint = true;
+                *self.main_entry = true;
                 let mut types = HashMap::new();
                 self.collect_statement_references(self.module, statement, &mut types);
             }
@@ -218,7 +226,7 @@ impl SymbolCollector<'_> {
     }
 
     fn push_function_signature(&mut self, function: &str, function_def: &ast::StmtFunctionDef) {
-        self.function_signatures.push(function_signature(
+        self.fn_sigs.push(function_signature(
             self.module,
             self.imports,
             function,
@@ -238,7 +246,7 @@ impl SymbolCollector<'_> {
         &mut self,
         owner: &str,
         body: &[ast::Stmt],
-        mut types: HashMap<String, String>,
+        mut types: HashMap<String, TypeBinding>,
     ) {
         for statement in body {
             self.collect_statement_references(owner, statement, &mut types);
@@ -249,7 +257,7 @@ impl SymbolCollector<'_> {
         &mut self,
         owner: &str,
         statement: &ast::Stmt,
-        types: &mut HashMap<String, String>,
+        types: &mut HashMap<String, TypeBinding>,
     ) {
         match statement {
             ast::Stmt::FunctionDef(function) => {
@@ -274,7 +282,14 @@ impl SymbolCollector<'_> {
                 {
                     for target in &assign.targets {
                         if let Some(name) = target_name(target) {
-                            types.insert(name.to_string(), type_name.clone());
+                            types.insert(name.to_string(), TypeBinding::erased(type_name.clone()));
+                        }
+                    }
+                }
+                if let Some(field_type) = field_read_type(self.classes, &assign.value, types) {
+                    for target in &assign.targets {
+                        if let Some(name) = target_name(target) {
+                            types.insert(name.to_string(), field_type.clone());
                         }
                     }
                 }
@@ -282,7 +297,7 @@ impl SymbolCollector<'_> {
             ast::Stmt::AnnAssign(assign) => {
                 if let Some(name) = target_name(&assign.target) {
                     if let Some(type_name) =
-                        type_name_from_expr(self.module, self.imports, &assign.annotation)
+                        type_binding_from_expr(self.module, self.imports, &assign.annotation)
                     {
                         types.insert(name.to_string(), type_name);
                     }
@@ -315,7 +330,7 @@ impl SymbolCollector<'_> {
         &mut self,
         owner: &str,
         expr: &ast::Expr,
-        types: &HashMap<String, String>,
+        types: &HashMap<String, TypeBinding>,
     ) {
         match expr {
             ast::Expr::Name(name) => self.push_reference(owner, name.id.as_str(), name.range),
@@ -347,7 +362,7 @@ impl SymbolCollector<'_> {
         &mut self,
         owner: &str,
         call: &ast::ExprCall,
-        types: &HashMap<String, String>,
+        types: &HashMap<String, TypeBinding>,
     ) {
         if let ast::Expr::Attribute(attribute) = call.func.as_ref() {
             self.collect_member_reference(owner, attribute, AccessKind::Call, types);
@@ -362,7 +377,7 @@ impl SymbolCollector<'_> {
                 callee.as_ref(),
                 constructor_type_name(self.module, self.imports, arg),
             ) {
-                self.call_argument_types.push(CallArgumentType {
+                self.call_args.push(CallArgumentType {
                     from: owner.to_string(),
                     callee: callee.clone(),
                     position,
@@ -379,14 +394,17 @@ impl SymbolCollector<'_> {
                 continue;
             };
             if let Some(arg) = &keyword.arg {
-                self.push_member_reference(
+                push_member_reference(
+                    self.member_refs,
+                    self.locator,
+                    self.file,
                     owner,
                     format!("{constructor_type}.{}", arg.as_str()),
                     AccessKind::Construct,
                     keyword.range,
                 );
             } else {
-                self.unsupported_expansions.push(UnsupportedExpansion {
+                self.unsupported.push(UnsupportedExpansion {
                     from: owner.to_string(),
                     target: constructor_type.clone(),
                     span: self
@@ -401,7 +419,7 @@ impl SymbolCollector<'_> {
         &mut self,
         owner: &str,
         target: &ast::Expr,
-        types: &HashMap<String, String>,
+        types: &HashMap<String, TypeBinding>,
     ) {
         match target {
             ast::Expr::Attribute(attribute) => {
@@ -426,19 +444,23 @@ impl SymbolCollector<'_> {
         &self,
         function: &ast::StmtFunctionDef,
         class_name: Option<&str>,
-    ) -> HashMap<String, String> {
+    ) -> HashMap<String, TypeBinding> {
         let mut types = HashMap::new();
         if let Some(class_name) = class_name {
             types.insert(
                 "self".to_string(),
-                format!("{}.{}", self.module, class_name),
+                TypeBinding::erased(format!("{}.{}", self.module, class_name)),
             );
-            types.insert("cls".to_string(), format!("{}.{}", self.module, class_name));
+            types.insert(
+                "cls".to_string(),
+                TypeBinding::erased(format!("{}.{}", self.module, class_name)),
+            );
         }
         for parameter in function.parameters.iter() {
             let parameter = parameter.as_parameter();
             if let Some(annotation) = parameter.annotation() {
-                if let Some(type_name) = type_name_from_expr(self.module, self.imports, annotation)
+                if let Some(type_name) =
+                    type_binding_from_expr(self.module, self.imports, annotation)
                 {
                     types.insert(parameter.name.as_str().to_string(), type_name);
                 }
@@ -452,7 +474,7 @@ impl SymbolCollector<'_> {
         owner: &str,
         attribute: &ast::ExprAttribute,
         access: AccessKind,
-        types: &HashMap<String, String>,
+        types: &HashMap<String, TypeBinding>,
     ) {
         let ast::Expr::Name(receiver) = attribute.value.as_ref() else {
             return;
@@ -464,9 +486,12 @@ impl SymbolCollector<'_> {
             return;
         }
         if let Some(receiver_type) = types.get(receiver_name) {
-            self.push_member_reference(
+            push_member_reference(
+                self.member_refs,
+                self.locator,
+                self.file,
                 owner,
-                format!("{}.{}", receiver_type, attribute.attr.as_str()),
+                format!("{}.{}", receiver_type.base, attribute.attr.as_str()),
                 access,
                 attribute.range,
             );
@@ -480,20 +505,5 @@ impl SymbolCollector<'_> {
                     .span_from_range_string(self.file, attribute.range),
             });
         }
-    }
-
-    fn push_member_reference(
-        &mut self,
-        owner: &str,
-        target: String,
-        access: AccessKind,
-        range: TextRange,
-    ) {
-        self.member_references.push(MemberReference {
-            from: owner.to_string(),
-            target,
-            access,
-            span: self.locator.span_from_range_string(self.file, range),
-        });
     }
 }
