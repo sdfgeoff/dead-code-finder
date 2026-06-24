@@ -174,6 +174,18 @@ fn local_return_list_iteration_resolves_item_fields() {
 }
 
 #[test]
+fn local_return_tuple_unpack_binds_positional_types() {
+    let report = analyze_fixture("local_return_tuple_unpack_binds_positional_types");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.ExampleRef.version_id".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Properties.name".to_string()));
+    assert!(symbols.contains(&"pkg.main.ExampleRef.unused".to_string()));
+    assert!(symbols.contains(&"pkg.main.Properties.unused".to_string()));
+}
+
+#[test]
 fn string_methods_and_unpacking_bind_builtin_types() {
     let report = analyze_fixture("string_methods_and_unpacking_bind_builtin_types");
     let symbols = finding_symbols(&report);

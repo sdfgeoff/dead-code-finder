@@ -45,17 +45,29 @@ pub(super) fn bind_collection_unpack_target(
     collection_type: &TypeBinding,
     types: &mut HashMap<String, TypeBinding>,
 ) {
-    let Some(item_type) = collection_item_type(collection_type) else {
-        return;
-    };
     let tuple_items = match target {
         ast::Expr::Tuple(tuple) => &tuple.elts,
         ast::Expr::List(list) => &list.elts,
         _ => return,
+    };
+    if is_tuple_type(&collection_type.base) && collection_type.args.len() == tuple_items.len() {
+        for (target_item, binding) in tuple_items.iter().zip(&collection_type.args) {
+            if let Some(name) = target_name(target_item) {
+                types.insert(name.to_string(), binding.clone());
+            }
+        }
+        return;
+    }
+    let Some(item_type) = collection_item_type(collection_type) else {
+        return;
     };
     for target_item in tuple_items {
         if let Some(name) = target_name(target_item) {
             types.insert(name.to_string(), item_type.clone());
         }
     }
+}
+
+fn is_tuple_type(type_name: &str) -> bool {
+    matches!(type_name, "tuple" | "typing.Tuple" | "Tuple") || type_name.ends_with(".tuple")
 }
