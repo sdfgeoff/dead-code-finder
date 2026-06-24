@@ -51,7 +51,10 @@ impl SymbolCollector<'_> {
                 );
                 self.push_imported_value_bindings(types, import_start);
             }
-            ast::Stmt::Expr(expr) => self.collect_expr_references(owner, &expr.value, types),
+            ast::Stmt::Expr(expr) => {
+                self.bind_append_receiver_type(&expr.value, types);
+                self.collect_expr_references(owner, &expr.value, types);
+            }
             ast::Stmt::Return(ret) => {
                 if let Some(value) = &ret.value {
                     self.collect_expr_references(owner, value, types);
@@ -350,6 +353,42 @@ impl SymbolCollector<'_> {
             ast::Expr::Name(name) => self.class_object_binding(name.id.as_str()),
             _ => None,
         }
+    }
+
+    fn bind_append_receiver_type(
+        &self,
+        expr: &ast::Expr,
+        types: &mut HashMap<String, TypeBinding>,
+    ) -> Option<()> {
+        let ast::Expr::Call(call) = expr else {
+            return None;
+        };
+        let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
+            return None;
+        };
+        if attribute.attr.as_str() != "append" {
+            return None;
+        }
+        let ast::Expr::Name(receiver) = attribute.value.as_ref() else {
+            return None;
+        };
+        if types.contains_key(receiver.id.as_str()) {
+            return None;
+        }
+        let item_type = call
+            .arguments
+            .args
+            .first()
+            .and_then(|arg| self.assignment_value_binding(arg, types))?;
+        types.insert(
+            receiver.id.as_str().to_string(),
+            TypeBinding {
+                base: "list".to_string(),
+                args: vec![item_type],
+                external: false,
+            },
+        );
+        Some(())
     }
 
     fn collect_assignment_target(
