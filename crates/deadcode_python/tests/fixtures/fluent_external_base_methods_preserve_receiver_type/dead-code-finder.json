@@ -5,7 +5,7 @@
     "fluentMethods": [
       {
         "receiverType": "pydantic.BaseModel",
-        "methods": ["model_copy"]
+        "methods": ["model_copy", "model_validate"]
       }
     ]
   }
