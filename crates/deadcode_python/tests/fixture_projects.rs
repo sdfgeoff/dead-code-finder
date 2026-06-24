@@ -185,6 +185,19 @@ fn imported_generic_type_alias_resolves_member_fields() {
 }
 
 #[test]
+fn reexported_generic_type_alias_resolves_member_fields() {
+    let report = analyze_fixture("reexported_generic_type_alias_resolves_member_fields");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.core.FeatureCollection.features".to_string()));
+    assert!(!symbols.contains(&"pkg.core.Feature.properties".to_string()));
+    assert!(!symbols.contains(&"pkg.core.Feature.geometry".to_string()));
+    assert!(!symbols.contains(&"pkg.core.BoundaryProperties.title_area".to_string()));
+    assert!(symbols.contains(&"pkg.core.BoundaryProperties.unused".to_string()));
+}
+
+#[test]
 fn scripts_inheritance_generics_and_unresolved_receivers_are_reported() {
     let report = analyze_fixture("scripts_inheritance_generics_and_unresolved_receivers");
     let symbols = finding_symbols(&report);

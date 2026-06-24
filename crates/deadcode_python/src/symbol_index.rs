@@ -255,9 +255,6 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
         }
     }
 
-    let mut all_classes = Vec::new();
-    let mut all_value_bindings = Vec::new();
-    let mut all_function_signatures = Vec::new();
     for (file, module) in &project_files {
         let module_index = index_module(
             module,
@@ -272,13 +269,32 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             false,
             false,
         )?;
-        all_classes.extend(module_index.module.classes.clone());
-        all_value_bindings.extend(module_index.module.value_bindings.clone());
-        all_function_signatures.extend(module_index.module.function_signatures.clone());
         index.modules.push(module_index.module);
     }
     let reexports = reexport_map(&index.modules);
     index.modules.clear();
+
+    let mut all_classes = Vec::new();
+    let mut all_value_bindings = Vec::new();
+    let mut all_function_signatures = Vec::new();
+    for (file, module) in &project_files {
+        let module_index = index_module(
+            module,
+            file,
+            &index.known_modules,
+            &config.rules,
+            &[],
+            &[],
+            &[],
+            &reexports,
+            false,
+            false,
+            false,
+        )?;
+        all_classes.extend(module_index.module.classes.clone());
+        all_value_bindings.extend(module_index.module.value_bindings.clone());
+        all_function_signatures.extend(module_index.module.function_signatures.clone());
+    }
 
     for (file, module) in &project_files {
         let module_index = index_module(
