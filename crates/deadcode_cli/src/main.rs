@@ -33,7 +33,7 @@ fn main() -> ExitCode {
     };
     if let Err(error) = print_result {
         if error.kind() == ErrorKind::BrokenPipe {
-            return ExitCode::SUCCESS;
+            return ExitCode::from(141);
         }
         eprintln!("dead-code-finder: failed to write output: {error}");
         return ExitCode::from(2);

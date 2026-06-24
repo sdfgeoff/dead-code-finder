@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 #[test]
 fn text_output_reports_findings_and_exits_one() {
@@ -76,6 +76,38 @@ run(None)
 
     let strict_output = project.command().arg("--strict").output().unwrap();
     assert_eq!(strict_output.status.code(), Some(1));
+}
+
+#[test]
+#[cfg(unix)]
+fn broken_pipe_exits_like_a_unix_filter() {
+    let project = FixtureProject::new("broken_pipe_exits_like_a_unix_filter");
+    let mut source = String::new();
+    for index in 0..20_000 {
+        source.push_str(&format!("def dead_{index}():\n    pass\n\n"));
+    }
+    project.write("pkg/main.py", &source);
+    project.write(
+        "dead-code-finder.json",
+        r#"{
+            "roots": [{"path": "pkg", "module": "pkg"}],
+            "entrypoints": ["pkg/main.py"]
+        }"#,
+    );
+
+    let mut producer = project.command();
+    let mut producer = producer.stdout(Stdio::piped()).spawn().unwrap();
+    let stdout = producer.stdout.take().unwrap();
+    let head = Command::new("head")
+        .args(["-n", "1"])
+        .stdin(stdout)
+        .stdout(Stdio::null())
+        .status()
+        .unwrap();
+    let producer = producer.wait().unwrap();
+
+    assert!(head.success());
+    assert_eq!(producer.code(), Some(141));
 }
 
 struct FixtureProject {
