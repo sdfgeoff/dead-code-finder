@@ -16,7 +16,22 @@ pub(super) fn decorator_registers_function(
     types: &HashMap<String, TypeBinding>,
 ) -> bool {
     rules.decorators.iter().any(|rule| {
-        rule.effect == "registerDecoratedFunction"
+        matches!(
+            rule.effect.as_str(),
+            "registerDecoratedFunction" | "registerBoundaryFunction"
+        ) && decorator_matches(rule, expr, module, imports, types)
+    })
+}
+
+pub(super) fn decorator_marks_boundary_function(
+    module: &str,
+    imports: &[ResolvedImport],
+    rules: &RuleConfig,
+    expr: &ast::Expr,
+    types: &HashMap<String, TypeBinding>,
+) -> bool {
+    rules.decorators.iter().any(|rule| {
+        rule.effect == "registerBoundaryFunction"
             && decorator_matches(rule, expr, module, imports, types)
     })
 }

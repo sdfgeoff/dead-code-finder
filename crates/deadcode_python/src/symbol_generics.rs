@@ -283,7 +283,7 @@ pub(super) fn member_reference_target_bases(receiver_type: &TypeBinding) -> Vec<
         .collect()
 }
 
-fn substitute_type_params(
+pub(super) fn substitute_type_params(
     binding: &TypeBinding,
     class_info: &ClassInfo,
     receiver_type: &TypeBinding,

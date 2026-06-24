@@ -274,7 +274,10 @@ fn validate_rules(rules: &RuleConfig) -> Result<(), ConfigError> {
                 message: "decorator receiverType rules require methods".to_string(),
             });
         }
-        if decorator.effect != "registerDecoratedFunction" {
+        if !matches!(
+            decorator.effect.as_str(),
+            "registerDecoratedFunction" | "registerBoundaryFunction"
+        ) {
             return Err(ConfigError::InvalidRule {
                 message: format!("unsupported decorator effect {}", decorator.effect),
             });

@@ -1,0 +1,16 @@
+{
+  "roots": [{ "path": "api", "module": "api" }],
+  "entrypoints": ["api/main.py"],
+  "rules": {
+    "constructors": [
+      { "match": "fastapi.APIRouter", "producesType": "fastapi.APIRouter" }
+    ],
+    "decorators": [
+      {
+        "receiverType": "fastapi.APIRouter",
+        "methods": ["post"],
+        "effect": "registerBoundaryFunction"
+      }
+    ]
+  }
+}

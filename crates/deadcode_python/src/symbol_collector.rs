@@ -76,7 +76,7 @@ use self::symbol_fields::collect_self_assignments;
 use self::symbol_imports::{collect_import, collect_import_from};
 use self::symbol_iteration::bind_collection_unpack_target;
 use self::symbol_metadata::{class_info, function_signature};
-use self::symbol_rules::decorator_registers_function;
+use self::symbol_rules::{decorator_marks_boundary_function, decorator_registers_function};
 use self::symbol_types::type_binding_from_annotation_expr;
 use super::{
     CallArgumentType, ClassInfo, FunctionSignature, IndexedSymbol, MemberReference, ResolvedImport,
@@ -388,6 +388,19 @@ impl SymbolCollector<'_> {
                 self.push_reference(
                     owner,
                     name.as_deref().unwrap_or(function.name.as_str()),
+                    decorator.range,
+                );
+            }
+            if decorator_marks_boundary_function(
+                self.module,
+                self.imports,
+                self.rules,
+                &decorator.expression,
+                types,
+            ) {
+                self.collect_boundary_function_model_references(
+                    &function_owner,
+                    function,
                     decorator.range,
                 );
             }

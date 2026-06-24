@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use ruff_python_ast as ast;
 use ruff_text_size::Ranged;
 
+use super::symbol_aliases::expand_alias_binding;
+use super::symbol_generics::substitute_type_params;
 use super::symbol_members::push_member_reference;
+use super::symbol_types::type_binding_from_annotation_expr;
 use super::SymbolCollector;
 use deadcode_core::SymbolKind;
 
@@ -62,6 +65,32 @@ impl SymbolCollector<'_> {
         );
     }
 
+    pub(super) fn collect_boundary_function_model_references(
+        &mut self,
+        owner: &str,
+        function: &ast::StmtFunctionDef,
+        range: ruff_text_size::TextRange,
+    ) {
+        for parameter in function.parameters.iter() {
+            let Some(annotation) = parameter.as_parameter().annotation() else {
+                continue;
+            };
+            let Some(binding) =
+                type_binding_from_annotation_expr(self.module, self.imports, annotation)
+            else {
+                continue;
+            };
+            self.collect_validated_type_references(owner, &binding, range, &mut Vec::new());
+        }
+        if let Some(returns) = &function.returns {
+            if let Some(binding) =
+                type_binding_from_annotation_expr(self.module, self.imports, returns)
+            {
+                self.collect_validated_type_references(owner, &binding, range, &mut Vec::new());
+            }
+        }
+    }
+
     fn collect_validated_type_references(
         &mut self,
         owner: &str,
@@ -69,7 +98,10 @@ impl SymbolCollector<'_> {
         range: ruff_text_size::TextRange,
         visited: &mut Vec<String>,
     ) {
-        let binding = unwrap_annotated_validation_type(binding);
+        let binding = expand_alias_binding(
+            &unwrap_annotated_validation_type(binding),
+            self.available_values,
+        );
         if is_collection_type(&binding.base) {
             for arg in &binding.args {
                 self.collect_validated_type_references(owner, arg, range, visited);
@@ -105,7 +137,7 @@ impl SymbolCollector<'_> {
         else {
             return;
         };
-        for field in class_fields(self.available_classes, &class_info) {
+        for field in class_fields(self.available_classes, &class_info, &binding) {
             push_member_reference(
                 self.member_refs,
                 self.locator,
@@ -172,8 +204,16 @@ impl SymbolCollector<'_> {
 fn class_fields(
     classes: &[ClassInfo],
     class_info: &ClassInfo,
+    receiver_type: &TypeBinding,
 ) -> Vec<crate::symbol_index::ClassFieldInfo> {
     let mut fields = class_info.fields.clone();
+    for field in &mut fields {
+        match &mut field.annotation {
+            FieldAnnotation::Concrete(annotation) => {
+                *annotation = substitute_type_params(annotation, class_info, receiver_type);
+            }
+        }
+    }
     for base in &class_info.bases {
         for inherited in class_field_names(classes, &base.base) {
             if !fields.iter().any(|field| field.name == inherited.name) {
@@ -230,6 +270,7 @@ fn is_collection_type(type_name: &str) -> bool {
             | "typing.Sequence"
             | "collections.abc.Sequence"
             | "typing.Union"
+            | "types.UnionType"
     ) || type_name.ends_with(".Sequence")
         || type_name.ends_with(".Union")
 }
