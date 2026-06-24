@@ -141,6 +141,17 @@ fn mapping_get_results_resolve_value_fields() {
 }
 
 #[test]
+fn mapping_setdefault_results_resolve_value_fields() {
+    let report = analyze_fixture("mapping_setdefault_results_resolve_value_fields");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Accumulator.id".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Accumulator.name".to_string()));
+    assert!(symbols.contains(&"pkg.main.Accumulator.unused".to_string()));
+}
+
+#[test]
 fn fluent_external_base_methods_preserve_receiver_type() {
     let report = analyze_fixture("fluent_external_base_methods_preserve_receiver_type");
     let symbols = finding_symbols(&report);
