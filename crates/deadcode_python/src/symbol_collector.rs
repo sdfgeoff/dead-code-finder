@@ -229,6 +229,7 @@ impl SymbolCollector<'_> {
                     self.collect_function_references(&method_owner, function, types);
                 }
                 ast::Stmt::AnnAssign(assign) => {
+                    let class_owner = format!("{}.{}", self.module, class_name);
                     if let Some(name) = target_name(&assign.target) {
                         self.push_symbol(
                             format!("{}.{}.{}", self.module, class_name, name),
@@ -236,15 +237,19 @@ impl SymbolCollector<'_> {
                             SymbolKind::Field,
                             assign.range,
                         );
-                        let class_owner = format!("{}.{}", self.module, class_name);
                         self.collect_expr_references(
                             &class_owner,
                             &assign.annotation,
                             module_types,
                         );
                     }
+                    if let Some(value) = &assign.value {
+                        self.collect_expr_references(&class_owner, value, module_types);
+                    }
                 }
                 ast::Stmt::Assign(assign) => {
+                    let class_owner = format!("{}.{}", self.module, class_name);
+                    self.collect_expr_references(&class_owner, &assign.value, module_types);
                     for target in &assign.targets {
                         if let Some(name) = target_name(target) {
                             self.push_symbol(

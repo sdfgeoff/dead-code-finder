@@ -51,6 +51,16 @@ fn async_statements_traverse_references() {
     assert!(symbols.contains(&"pkg.main.UnusedClient.send".to_string()));
 }
 
+#[test]
+fn class_body_initializer_references_are_traversed() {
+    let report = analyze_fixture("class_body_initializer_references");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.parse_csv".to_string()));
+    assert!(symbols.contains(&"pkg.main.unused_parse".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))
