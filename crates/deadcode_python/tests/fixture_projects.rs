@@ -227,6 +227,19 @@ fn builtin_constructor_method_chain_unpack() {
 }
 
 #[test]
+fn builtin_collection_constructor_preserves_iterable_item_type() {
+    let report = analyze_fixture("builtin_collection_constructor_preserves_iterable_item_type");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Feature.geometry".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Feature.properties".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Properties.status".to_string()));
+    assert!(symbols.contains(&"pkg.main.Feature.unused".to_string()));
+    assert!(symbols.contains(&"pkg.main.Properties.unused".to_string()));
+}
+
+#[test]
 fn string_join_result_is_string() {
     let report = analyze_fixture("string_join_result_is_string");
     let symbols = finding_symbols(&report);

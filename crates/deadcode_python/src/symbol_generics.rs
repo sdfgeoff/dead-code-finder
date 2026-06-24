@@ -120,7 +120,7 @@ pub(super) fn expr_type(
             collection_item_type(&expr_type(classes, &subscript.value, types)?)
         }
         ast::Expr::Await(await_expr) => expr_type(classes, &await_expr.value, types),
-        ast::Expr::Call(call) => builtin_constructor_call_type(call)
+        ast::Expr::Call(call) => builtin_constructor_call_type(classes, call, types)
             .or_else(|| mapping_items_call_type(classes, call, types))
             .or_else(|| mapping_value_call_type(classes, call, types))
             .or_else(|| builtin_method_call_type(classes, call, types))
@@ -244,10 +244,26 @@ pub(super) fn collection_item_type(collection_type: &TypeBinding) -> Option<Type
     None
 }
 
-fn builtin_constructor_call_type(call: &ast::ExprCall) -> Option<TypeBinding> {
+fn builtin_constructor_call_type(
+    classes: &[ClassInfo],
+    call: &ast::ExprCall,
+    types: &HashMap<String, TypeBinding>,
+) -> Option<TypeBinding> {
     let ast::Expr::Name(name) = call.func.as_ref() else {
         return None;
     };
+    if matches!(name.id.as_str(), "list" | "set" | "tuple") {
+        let item_type = call
+            .arguments
+            .args
+            .first()
+            .and_then(|arg| iterable_item_type(classes, arg, types));
+        return Some(TypeBinding {
+            base: name.id.as_str().to_string(),
+            args: item_type.into_iter().collect(),
+            external: false,
+        });
+    }
     matches!(
         name.id.as_str(),
         "bool" | "bytes" | "complex" | "float" | "int" | "str"
