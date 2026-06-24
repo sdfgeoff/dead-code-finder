@@ -51,6 +51,16 @@ fn cross_module_lambda_protocol_call_argument_marks_implementation_methods_live(
     assert!(!symbols.contains(&"app.context.ExampleContext.resource_id".to_string()));
 }
 
+#[test]
+fn protocol_concrete_flow_through_forwarded_call_marks_implementation_methods_live() {
+    let report = analyze_fixture("protocol_concrete_flow_through_forwarded_call");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.ExampleContext.to_context_prompt".to_string()));
+    assert!(symbols.contains(&"pkg.main.UnusedContext.to_context_prompt".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     analyze_project(&AnalyzeOptions {
         config_path: fixture_path(name).join("dead-code-finder.json"),

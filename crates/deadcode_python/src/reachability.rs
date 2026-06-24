@@ -193,11 +193,26 @@ fn compute_live_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<Strin
                 continue;
             }
             let flow_key = (call_argument.callee.clone(), base_type.clone());
-            let concrete_types = concrete_flows.entry(flow_key).or_default();
-            if concrete_types.insert(call_argument.concrete_type.clone())
-                && live.contains(&call_argument.callee)
-            {
-                queue.push_back(call_argument.callee.clone());
+            let forwarded =
+                concrete_flow_candidates(&owner, &call_argument.concrete_type, &concrete_flows)
+                    .into_iter()
+                    .flat_map(|types| types.iter().cloned())
+                    .collect::<Vec<_>>();
+            let concrete_candidates = if forwarded.is_empty() {
+                vec![call_argument.concrete_type.clone()]
+            } else {
+                forwarded
+            };
+            for concrete_type in concrete_candidates {
+                if requires_subclass_check
+                    && !is_subclass_or_same(&concrete_type, base_type, &class_map, &symbol_kinds)
+                {
+                    continue;
+                }
+                let concrete_types = concrete_flows.entry(flow_key.clone()).or_default();
+                if concrete_types.insert(concrete_type) && live.contains(&call_argument.callee) {
+                    queue.push_back(call_argument.callee.clone());
+                }
             }
         }
 
