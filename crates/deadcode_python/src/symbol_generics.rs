@@ -42,6 +42,7 @@ pub(super) fn expr_type(
             collection_item_type(&expr_type(classes, &subscript.value, types)?)
         }
         ast::Expr::Await(await_expr) => expr_type(classes, &await_expr.value, types),
+        ast::Expr::Call(call) => mapping_get_call_type(classes, call, types),
         ast::Expr::List(list) => {
             list_item_type(classes, &list.elts, types).map(|item| TypeBinding {
                 base: "list".to_string(),
@@ -109,6 +110,24 @@ fn collection_item_type(collection_type: &TypeBinding) -> Option<TypeBinding> {
     }
     if is_iterable_collection(&collection_type.base) {
         return collection_type.args.first().cloned();
+    }
+    None
+}
+
+fn mapping_get_call_type(
+    classes: &[ClassInfo],
+    call: &ast::ExprCall,
+    types: &HashMap<String, TypeBinding>,
+) -> Option<TypeBinding> {
+    let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
+        return None;
+    };
+    if attribute.attr.as_str() != "get" {
+        return None;
+    }
+    let receiver_type = expr_type(classes, &attribute.value, types)?;
+    if is_mapping_collection(&receiver_type.base) {
+        return receiver_type.args.get(1).cloned();
     }
     None
 }

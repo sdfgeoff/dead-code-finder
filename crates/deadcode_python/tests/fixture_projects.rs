@@ -124,6 +124,16 @@ fn imported_module_list_literals_resolve_item_fields() {
 }
 
 #[test]
+fn mapping_get_results_resolve_value_fields() {
+    let report = analyze_fixture("mapping_get_results_resolve_value_fields");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Item.name".to_string()));
+    assert!(symbols.contains(&"pkg.main.Item.unused".to_string()));
+}
+
+#[test]
 fn scripts_inheritance_generics_and_unresolved_receivers_are_reported() {
     let report = analyze_fixture("scripts_inheritance_generics_and_unresolved_receivers");
     let symbols = finding_symbols(&report);
