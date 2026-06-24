@@ -6,6 +6,28 @@ use super::SymbolCollector;
 use crate::symbol_index::TypeBinding;
 
 impl SymbolCollector<'_> {
+    pub(super) fn collect_lambda_references(
+        &mut self,
+        owner: &str,
+        lambda: &ast::ExprLambda,
+        types: &HashMap<String, TypeBinding>,
+    ) {
+        if lambda
+            .parameters
+            .as_deref()
+            .is_some_and(|parameters| parameters.iter().next().is_some())
+        {
+            return;
+        }
+        let mut scoped_types = types.clone();
+        if let Some(parameters) = lambda.parameters.as_deref() {
+            for parameter in parameters.iter() {
+                scoped_types.remove(parameter.as_parameter().name.as_str());
+            }
+        }
+        self.collect_expr_references(owner, &lambda.body, &scoped_types);
+    }
+
     pub(super) fn collect_max_key_lambda_references(
         &mut self,
         owner: &str,

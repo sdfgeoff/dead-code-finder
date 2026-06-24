@@ -1,0 +1,7 @@
+{
+  "roots": [
+    { "path": "app", "module": "app" },
+    { "path": "lib", "module": "lib" }
+  ],
+  "entrypoints": ["app/main.py"]
+}

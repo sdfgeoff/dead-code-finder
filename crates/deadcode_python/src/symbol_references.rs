@@ -283,6 +283,9 @@ impl SymbolCollector<'_> {
             ast::Expr::Generator(generator) => {
                 self.collect_generator_references(owner, generator, types);
             }
+            ast::Expr::Lambda(lambda) => {
+                self.collect_lambda_references(owner, lambda, types);
+            }
             ast::Expr::Set(set) => {
                 for element in &set.elts {
                     self.collect_expr_references(owner, element, types);

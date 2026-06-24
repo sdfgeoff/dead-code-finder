@@ -28,6 +28,29 @@ fn structural_protocol_tuple_return_marks_implementation_methods_live() {
     assert!(symbols.contains(&"pkg.main.UnusedHistory.append_event".to_string()));
 }
 
+#[test]
+fn lambda_protocol_call_argument_marks_implementation_methods_live() {
+    let report = analyze_fixture("lambda_protocol_call_argument");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.ExampleContext.to_context_prompt".to_string()));
+    assert!(!symbols.contains(&"pkg.main.History.get_events".to_string()));
+    assert!(!symbols.contains(&"pkg.main.History.append_event".to_string()));
+    assert!(symbols.contains(&"pkg.main.UnusedHistory.get_events".to_string()));
+    assert!(symbols.contains(&"pkg.main.UnusedHistory.append_event".to_string()));
+}
+
+#[test]
+fn cross_module_lambda_protocol_call_argument_marks_implementation_methods_live() {
+    let report = analyze_fixture("lambda_protocol_call_argument_cross_module");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"app.context.ExampleContext.to_context_prompt".to_string()));
+    assert!(!symbols.contains(&"app.context.ExampleContext.resource_id".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     analyze_project(&AnalyzeOptions {
         config_path: fixture_path(name).join("dead-code-finder.json"),
