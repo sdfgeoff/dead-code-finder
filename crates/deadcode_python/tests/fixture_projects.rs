@@ -139,6 +139,17 @@ fn local_return_list_iteration_resolves_item_fields() {
 }
 
 #[test]
+fn string_methods_and_unpacking_bind_builtin_types() {
+    let report = analyze_fixture("string_methods_and_unpacking_bind_builtin_types");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Parsed.method".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Parsed.url".to_string()));
+    assert!(symbols.contains(&"pkg.main.Parsed.unused".to_string()));
+}
+
+#[test]
 fn awaited_mapping_subscript_resolves_generic_item_fields() {
     let report = analyze_fixture("awaited_mapping_subscript_resolves_generic_item_fields");
     let symbols = finding_symbols(&report);

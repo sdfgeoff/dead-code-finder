@@ -5,7 +5,7 @@ use ruff_text_size::Ranged;
 
 use super::symbol_expr::target_name;
 use super::symbol_generics::{expr_type, member_reference_target_bases};
-use super::symbol_iteration::bind_iteration_target;
+use super::symbol_iteration::{bind_collection_unpack_target, bind_iteration_target};
 use super::symbol_members::push_member_reference;
 use super::symbol_rules::{
     callable_argument_references, callable_identity, constructed_type_from_callee,
@@ -59,6 +59,8 @@ impl SymbolCollector<'_> {
                             if owner == self.module {
                                 self.push_value_binding(name, type_name.clone());
                             }
+                        } else {
+                            bind_collection_unpack_target(target, &type_name, types);
                         }
                     }
                 }

@@ -88,6 +88,7 @@ pub(super) fn expr_type(
         ast::Expr::Await(await_expr) => expr_type(classes, &await_expr.value, types),
         ast::Expr::Call(call) => mapping_items_call_type(classes, call, types)
             .or_else(|| mapping_value_call_type(classes, call, types))
+            .or_else(|| builtin_method_call_type(classes, call, types))
             .or_else(|| callable_call_return_type(classes, call, types))
             .or_else(|| unique_class_constructor_type(classes, call)),
         ast::Expr::List(list) => {
@@ -246,6 +247,30 @@ fn mapping_value_call_type(
         return receiver_type.args.get(1).cloned();
     }
     None
+}
+
+fn builtin_method_call_type(
+    classes: &[ClassInfo],
+    call: &ast::ExprCall,
+    types: &HashMap<String, TypeBinding>,
+) -> Option<TypeBinding> {
+    let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
+        return None;
+    };
+    let receiver_type = expr_type(classes, &attribute.value, types)?;
+    match (receiver_type.base.as_str(), attribute.attr.as_str()) {
+        ("str", "split" | "rsplit") => Some(TypeBinding {
+            base: "list".to_string(),
+            args: vec![TypeBinding::erased("str".to_string())],
+            external: false,
+        }),
+        ("str", "strip" | "replace") | ("bytes", "decode") => {
+            Some(TypeBinding::erased("str".to_string()))
+        }
+        ("str", "encode") => Some(TypeBinding::erased("bytes".to_string())),
+        ("str", "startswith") => Some(TypeBinding::erased("bool".to_string())),
+        _ => None,
+    }
 }
 
 fn callable_call_return_type(

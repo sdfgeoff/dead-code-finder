@@ -109,6 +109,9 @@ fn resolve_name_to_type_binding(
     imports: &[ResolvedImport],
     name: &str,
 ) -> Option<TypeBinding> {
+    if is_builtin_type(name) {
+        return Some(TypeBinding::erased(name.to_string()));
+    }
     for import in imports.iter() {
         if import.binding != name {
             continue;
@@ -135,6 +138,9 @@ fn resolve_name_to_type_binding(
 }
 
 fn resolve_name_to_symbol(module: &str, imports: &[ResolvedImport], name: &str) -> Option<String> {
+    if is_builtin_type(name) {
+        return Some(name.to_string());
+    }
     for import in imports.iter() {
         if import.binding != name {
             continue;
@@ -153,6 +159,24 @@ fn resolve_name_to_symbol(module: &str, imports: &[ResolvedImport], name: &str) 
         };
     }
     Some(format!("{module}.{name}"))
+}
+
+fn is_builtin_type(name: &str) -> bool {
+    matches!(
+        name,
+        "bool"
+            | "bytes"
+            | "complex"
+            | "dict"
+            | "float"
+            | "frozenset"
+            | "int"
+            | "list"
+            | "object"
+            | "set"
+            | "str"
+            | "tuple"
+    )
 }
 
 fn dotted_expr(expr: &ast::ExprAttribute) -> Option<String> {

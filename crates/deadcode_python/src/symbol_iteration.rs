@@ -39,3 +39,23 @@ pub(super) fn bind_iteration_target(
         }
     }
 }
+
+pub(super) fn bind_collection_unpack_target(
+    target: &ast::Expr,
+    collection_type: &TypeBinding,
+    types: &mut HashMap<String, TypeBinding>,
+) {
+    let Some(item_type) = collection_item_type(collection_type) else {
+        return;
+    };
+    let tuple_items = match target {
+        ast::Expr::Tuple(tuple) => &tuple.elts,
+        ast::Expr::List(list) => &list.elts,
+        _ => return,
+    };
+    for target_item in tuple_items {
+        if let Some(name) = target_name(target_item) {
+            types.insert(name.to_string(), item_type.clone());
+        }
+    }
+}
