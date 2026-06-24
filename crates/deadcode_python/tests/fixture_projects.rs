@@ -193,6 +193,16 @@ fn mapping_get_results_resolve_value_fields() {
 }
 
 #[test]
+fn cast_ifexp_resolves_mapping_get_receiver() {
+    let report = analyze_fixture("cast_ifexp_resolves_mapping_get_receiver");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Result.error".to_string()));
+    assert!(symbols.contains(&"pkg.main.Result.unused".to_string()));
+}
+
+#[test]
 fn mapping_setdefault_results_resolve_value_fields() {
     let report = analyze_fixture("mapping_setdefault_results_resolve_value_fields");
     let symbols = finding_symbols(&report);

@@ -47,6 +47,7 @@ impl SymbolCollector<'_> {
                         .or_else(|| expr_type(self.available_classes, &assign.value, types))
                         .or_else(|| self.local_call_return_binding(&assign.value, types))
                         .or_else(|| self.local_call_field_read_binding(&assign.value, types))
+                        .or_else(|| self.cast_or_if_expression_binding(&assign.value, types))
                         .or_else(|| self.fluent_self_call_binding(&assign.value, types))
                         .or_else(|| self.external_call_result_binding(&assign.value, types))
                         .or_else(|| {
@@ -201,6 +202,11 @@ impl SymbolCollector<'_> {
             }
             ast::Expr::Await(await_expr) => {
                 self.collect_expr_references(owner, &await_expr.value, types);
+            }
+            ast::Expr::If(if_expr) => {
+                self.collect_expr_references(owner, &if_expr.test, types);
+                self.collect_expr_references(owner, &if_expr.body, types);
+                self.collect_expr_references(owner, &if_expr.orelse, types);
             }
             ast::Expr::Tuple(tuple) => {
                 for element in &tuple.elts {

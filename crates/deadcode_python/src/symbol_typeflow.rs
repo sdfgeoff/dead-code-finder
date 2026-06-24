@@ -4,6 +4,7 @@ use ruff_python_ast as ast;
 
 use super::symbol_generics::{expr_type, field_read_type, field_type_for_receiver};
 use super::symbol_rules::{callable_identity, constructor_binding};
+use super::symbol_types::type_binding_from_expr;
 use super::SymbolCollector;
 use crate::symbol_index::{FunctionSignature, TypeBinding};
 
@@ -70,6 +71,15 @@ impl SymbolCollector<'_> {
         )
     }
 
+    pub(super) fn cast_or_if_expression_binding(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        self.cast_binding(expr)
+            .or_else(|| self.if_expression_binding(expr, types))
+    }
+
     pub(super) fn fluent_self_call_binding(
         &self,
         expr: &ast::Expr,
@@ -121,6 +131,36 @@ impl SymbolCollector<'_> {
                 .or_else(|| field_read_type(self.available_classes, expr, types))
                 .or_else(|| expr_type(self.available_classes, expr, types)),
         }
+    }
+
+    fn cast_binding(&self, expr: &ast::Expr) -> Option<TypeBinding> {
+        let ast::Expr::Call(call) = expr else {
+            return None;
+        };
+        if callable_identity(self.module, self.imports, &call.func).as_deref()
+            != Some("typing.cast")
+        {
+            return None;
+        }
+        let annotation = call.arguments.args.first()?;
+        type_binding_from_expr(self.module, self.imports, annotation)
+    }
+
+    fn if_expression_binding(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        let ast::Expr::If(if_expr) = expr else {
+            return None;
+        };
+        let body = self
+            .cast_or_if_expression_binding(&if_expr.body, types)
+            .or_else(|| expr_type(self.available_classes, &if_expr.body, types))?;
+        let orelse = self
+            .cast_or_if_expression_binding(&if_expr.orelse, types)
+            .or_else(|| expr_type(self.available_classes, &if_expr.orelse, types))?;
+        compatible_branch_type(&body, &orelse).cloned()
     }
 
     fn fluent_method_returns_self(&self, receiver_type: &TypeBinding, method: &str) -> bool {
@@ -211,6 +251,14 @@ impl SymbolCollector<'_> {
         };
         substitutions.insert(type_var.to_string(), argument_type);
     }
+}
+
+fn compatible_branch_type<'a>(
+    left: &'a TypeBinding,
+    right: &'a TypeBinding,
+) -> Option<&'a TypeBinding> {
+    (left.base == right.base && left.args == right.args && left.external == right.external)
+        .then_some(left)
 }
 
 fn type_var_from_type_argument(annotation: Option<&TypeBinding>) -> Option<&str> {
