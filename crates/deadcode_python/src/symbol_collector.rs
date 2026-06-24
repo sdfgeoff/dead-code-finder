@@ -1,3 +1,5 @@
+#[path = "symbol_construction.rs"]
+mod symbol_construction;
 #[path = "symbol_context.rs"]
 mod symbol_context;
 #[path = "symbol_expr.rs"]
@@ -16,6 +18,8 @@ mod symbol_imports;
 mod symbol_interpolation;
 #[path = "symbol_iteration.rs"]
 mod symbol_iteration;
+#[path = "symbol_member_refs.rs"]
+mod symbol_member_refs;
 #[path = "symbol_members.rs"]
 mod symbol_members;
 #[path = "symbol_metadata.rs"]

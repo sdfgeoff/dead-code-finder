@@ -159,14 +159,16 @@ fn compute_live_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<Strin
             let Some(signature) = signature_map.get(call_argument.callee.as_str()) else {
                 continue;
             };
-            let Some(Some(base_type)) = signature
+            let Some(Some((base_type, requires_subclass_check))) = signature
                 .parameters
                 .get(call_argument.position)
-                .map(|parameter| parameter.annotation.as_ref().map(|binding| &binding.base))
+                .map(|parameter| parameter.annotation.as_ref().and_then(concrete_flow_base))
             else {
                 continue;
             };
-            if !is_subclass_or_same(&call_argument.concrete_type, base_type, &class_map) {
+            if requires_subclass_check
+                && !is_subclass_or_same(&call_argument.concrete_type, base_type, &class_map)
+            {
                 continue;
             }
             let flow_key = (call_argument.callee.clone(), base_type.clone());
@@ -214,6 +216,20 @@ fn compute_live_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<Strin
 
     mark_symbol_owners_live(&mut live, &symbol_kinds);
     live
+}
+
+fn concrete_flow_base(annotation: &crate::symbol_index::TypeBinding) -> Option<(&String, bool)> {
+    if is_type_object(&annotation.base) {
+        return annotation.args.first().map(|arg| (&arg.base, false));
+    }
+    Some((&annotation.base, true))
+}
+
+fn is_type_object(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "type" | "typing.Type" | "typing_extensions.Type" | "Type"
+    ) || type_name.ends_with(".Type")
 }
 
 fn root_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<String> {

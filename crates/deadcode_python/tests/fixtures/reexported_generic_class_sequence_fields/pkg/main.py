@@ -17,6 +17,14 @@ class Overlap:
     properties: Properties
 
 
+StatsType = TypeVar("StatsType")
+
+
+class Stats:
+    amount: float
+    unused: int
+
+
 def total(features: Sequence[Feature[PropertiesType]]) -> list[PropertiesType]:
     feature_list = list(features)
     return [feature.properties for feature in feature_list]
@@ -56,7 +64,12 @@ def optional_nested_overlap(overlap_groups: list[list[Overlap]] | None) -> float
     return results[0]
 
 
+def stats_from_payload(stats_cls: type[StatsType], payload: dict[str, object]) -> StatsType:
+    return stats_cls(**payload, amount=1.0)
+
+
 total_area([])
 flattened_area([])
 zipped_area([])
 optional_nested_overlap([])
+stats_from_payload(Stats, {})

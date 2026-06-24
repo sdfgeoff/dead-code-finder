@@ -176,6 +176,7 @@ fn is_builtin_type(name: &str) -> bool {
             | "object"
             | "set"
             | "str"
+            | "type"
             | "tuple"
     )
 }

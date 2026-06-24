@@ -3,15 +3,12 @@ use std::collections::HashMap;
 use ruff_python_ast as ast;
 use ruff_text_size::Ranged;
 
+use super::symbol_construction::constructed_type_for_call;
 use super::symbol_expr::target_name;
-use super::symbol_generics::{expr_type, member_reference_target_bases};
 use super::symbol_imports::{collect_import, collect_import_from};
 use super::symbol_iteration::{bind_collection_unpack_target, bind_iteration_target};
 use super::symbol_members::push_member_reference;
-use super::symbol_rules::{
-    callable_argument_references, callable_identity, constructed_type_from_callee,
-    constructor_binding,
-};
+use super::symbol_rules::{callable_argument_references, callable_identity, constructor_binding};
 use super::symbol_types::type_binding_from_expr;
 use super::SymbolCollector;
 use crate::symbol_index::{
@@ -273,7 +270,8 @@ impl SymbolCollector<'_> {
         for (position, arg) in call.arguments.args.iter().enumerate() {
             if let (Some(callee), Some(concrete_type)) = (
                 callee.as_ref(),
-                constructor_binding(self.module, self.imports, self.rules, arg),
+                constructor_binding(self.module, self.imports, self.rules, arg)
+                    .or_else(|| self.class_object_argument_binding(arg)),
             ) {
                 self.call_args.push(CallArgumentType {
                     from: owner.to_string(),
@@ -285,9 +283,9 @@ impl SymbolCollector<'_> {
             }
             self.collect_expr_references(owner, arg, types);
         }
-        let constructor_type =
-            constructed_type_from_callee(self.module, self.imports, self.rules, &call.func);
-        if let Some(constructor_type) = constructor_type.as_ref() {
+        let constructor =
+            constructed_type_for_call(self.module, self.imports, self.rules, &call.func, types);
+        if let Some((constructor_type, _)) = constructor.as_ref() {
             push_member_reference(
                 self.member_refs,
                 self.locator,
@@ -300,7 +298,7 @@ impl SymbolCollector<'_> {
         }
         for keyword in &call.arguments.keywords {
             self.collect_expr_references(owner, &keyword.value, types);
-            let Some(constructor_type) = constructor_type.as_ref() else {
+            let Some((constructor_type, is_type_parameter)) = constructor.as_ref() else {
                 continue;
             };
             if let Some(arg) = &keyword.arg {
@@ -313,7 +311,7 @@ impl SymbolCollector<'_> {
                     AccessKind::Construct,
                     keyword.range,
                 );
-            } else {
+            } else if !is_type_parameter {
                 self.unsupported.push(UnsupportedExpansion {
                     from: owner.to_string(),
                     target: constructor_type.clone(),
@@ -322,6 +320,13 @@ impl SymbolCollector<'_> {
                         .span_from_range_string(self.file, keyword.range),
                 });
             }
+        }
+    }
+
+    fn class_object_argument_binding(&self, expr: &ast::Expr) -> Option<TypeBinding> {
+        match expr {
+            ast::Expr::Name(name) => self.class_object_binding(name.id.as_str()),
+            _ => None,
         }
     }
 
@@ -347,60 +352,6 @@ impl SymbolCollector<'_> {
                 }
             }
             _ => {}
-        }
-    }
-
-    fn collect_member_reference(
-        &mut self,
-        owner: &str,
-        attribute: &ast::ExprAttribute,
-        access: AccessKind,
-        types: &HashMap<String, TypeBinding>,
-    ) {
-        let receiver_type = match attribute.value.as_ref() {
-            ast::Expr::Name(receiver) => {
-                let receiver_name = receiver.id.as_str();
-                if self.imports.iter().any(|import| {
-                    import.binding == receiver_name && import_target_is_external(&import.target)
-                }) {
-                    return;
-                }
-                types
-                    .get(receiver_name)
-                    .cloned()
-                    .or_else(|| self.class_object_binding(receiver_name))
-            }
-            value => expr_type(self.available_classes, value, types)
-                .or_else(|| self.local_call_return_binding(value, types)),
-        };
-        if let Some(receiver_type) = receiver_type {
-            if receiver_type.external {
-                return;
-            }
-            for target_base in member_reference_target_bases(&receiver_type) {
-                push_member_reference(
-                    self.member_refs,
-                    self.locator,
-                    self.file,
-                    owner,
-                    format!("{}.{}", target_base, attribute.attr.as_str()),
-                    access.clone(),
-                    attribute.range,
-                );
-            }
-        } else {
-            let ast::Expr::Name(receiver) = attribute.value.as_ref() else {
-                return;
-            };
-            self.unresolved_receivers
-                .push(crate::symbol_index::UnresolvedReceiver {
-                    from: owner.to_string(),
-                    receiver: receiver.id.as_str().to_string(),
-                    member: attribute.attr.as_str().to_string(),
-                    span: self
-                        .locator
-                        .span_from_range_string(self.file, attribute.range),
-                });
         }
     }
 
@@ -466,14 +417,6 @@ impl SymbolCollector<'_> {
             qualified_name,
             binding,
         });
-    }
-}
-
-fn import_target_is_external(target: &ImportTarget) -> bool {
-    match target {
-        ImportTarget::Module { external, .. }
-        | ImportTarget::Symbol { external, .. }
-        | ImportTarget::Star { external, .. } => *external,
     }
 }
 
