@@ -30,6 +30,20 @@ fn isinstance_list_comprehension_narrows_union_item() {
 }
 
 #[test]
+fn attribute_union_branch_narrowing() {
+    let report = analyze_fixture("attribute_union_branch_narrowing");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.RegionalStock.region".to_string()));
+    assert!(!symbols.contains(&"pkg.main.RegionalStock.values".to_string()));
+    assert!(!symbols.contains(&"pkg.main.GlobalStock.values".to_string()));
+    assert!(symbols.contains(&"pkg.main.RegionalStock.unused".to_string()));
+    assert!(symbols.contains(&"pkg.main.GlobalStock.unused".to_string()));
+    assert!(symbols.contains(&"pkg.main.Species.unused".to_string()));
+}
+
+#[test]
 fn max_call_preserves_iterable_item_type() {
     let report = analyze_fixture("max_call_preserves_iterable_item_type");
     let symbols = finding_symbols(&report);

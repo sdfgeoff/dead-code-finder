@@ -32,3 +32,15 @@ pub(super) fn self_attribute_name(expr: &ast::Expr) -> Option<&str> {
         _ => None,
     }
 }
+
+pub(super) fn expr_type_key(expr: &ast::Expr) -> Option<String> {
+    match expr {
+        ast::Expr::Name(name) => Some(name.id.as_str().to_string()),
+        ast::Expr::Attribute(attribute) => Some(format!(
+            "{}.{}",
+            expr_type_key(&attribute.value)?,
+            attribute.attr
+        )),
+        _ => None,
+    }
+}

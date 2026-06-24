@@ -99,15 +99,24 @@ impl SymbolCollector<'_> {
             }
             ast::Stmt::If(if_stmt) => {
                 self.collect_expr_references(owner, &if_stmt.test, types);
+                let (mut body_types, mut remaining_types) =
+                    self.branch_type_bindings(&if_stmt.test, types);
                 for nested in &if_stmt.body {
-                    self.collect_statement_references(owner, nested, types);
+                    self.collect_statement_references(owner, nested, &mut body_types);
                 }
                 for clause in &if_stmt.elif_else_clauses {
                     if let Some(test) = &clause.test {
-                        self.collect_expr_references(owner, test, types);
+                        self.collect_expr_references(owner, test, &remaining_types);
+                        let (mut clause_types, next_remaining) =
+                            self.branch_type_bindings(test, &remaining_types);
+                        for nested in &clause.body {
+                            self.collect_statement_references(owner, nested, &mut clause_types);
+                        }
+                        remaining_types = next_remaining;
+                        continue;
                     }
                     for nested in &clause.body {
-                        self.collect_statement_references(owner, nested, types);
+                        self.collect_statement_references(owner, nested, &mut remaining_types);
                     }
                 }
             }
@@ -228,8 +237,9 @@ impl SymbolCollector<'_> {
             }
             ast::Expr::If(if_expr) => {
                 self.collect_expr_references(owner, &if_expr.test, types);
-                self.collect_expr_references(owner, &if_expr.body, types);
-                self.collect_expr_references(owner, &if_expr.orelse, types);
+                let (body_types, orelse_types) = self.branch_type_bindings(&if_expr.test, types);
+                self.collect_expr_references(owner, &if_expr.body, &body_types);
+                self.collect_expr_references(owner, &if_expr.orelse, &orelse_types);
             }
             ast::Expr::Tuple(tuple) => {
                 for element in &tuple.elts {

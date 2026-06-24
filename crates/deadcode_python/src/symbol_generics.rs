@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ruff_python_ast as ast;
 
 use super::symbol_comprehension_narrowing::apply_isinstance_narrowing;
-use super::symbol_expr::target_name;
+use super::symbol_expr::{expr_type_key, target_name};
 use crate::symbol_index::{ClassInfo, FieldAnnotation, TypeBinding};
 
 pub(super) fn field_read_type(
@@ -14,6 +14,9 @@ pub(super) fn field_read_type(
     let ast::Expr::Attribute(attribute) = expr else {
         return None;
     };
+    if let Some(binding) = expr_type_key(expr).and_then(|key| types.get(&key).cloned()) {
+        return Some(binding);
+    }
     let receiver_type = match attribute.value.as_ref() {
         ast::Expr::Name(receiver) => types.get(receiver.id.as_str()).cloned(),
         expr => expr_type(classes, expr, types),
