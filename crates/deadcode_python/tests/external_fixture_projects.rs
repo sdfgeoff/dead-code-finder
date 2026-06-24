@@ -10,6 +10,14 @@ fn external_http_client_call_results_suppress_receiver_warnings() {
     assert!(report.diagnostics.is_empty());
 }
 
+#[test]
+fn json_branch_mapping_get_resolves_receiver() {
+    let report = analyze_fixture("json_branch_mapping_get");
+
+    assert!(report.findings.is_empty());
+    assert!(report.diagnostics.is_empty());
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     analyze_project(&AnalyzeOptions {
         config_path: fixture_path(name).join("dead-code-finder.json"),

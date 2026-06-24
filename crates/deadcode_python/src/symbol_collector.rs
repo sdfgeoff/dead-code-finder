@@ -34,6 +34,8 @@ mod symbol_imports;
 mod symbol_interpolation;
 #[path = "symbol_iteration.rs"]
 mod symbol_iteration;
+#[path = "symbol_json_types.rs"]
+mod symbol_json_types;
 #[path = "symbol_lambda.rs"]
 mod symbol_lambda;
 #[path = "symbol_mapping_types.rs"]

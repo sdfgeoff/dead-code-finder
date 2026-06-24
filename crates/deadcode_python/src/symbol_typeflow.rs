@@ -15,7 +15,7 @@ use super::symbol_typevars::{
     collect_type_var_substitutions, substitute_type_vars, type_var_from_type_argument,
 };
 use super::SymbolCollector;
-use crate::symbol_index::{FunctionSignature, TypeBinding};
+use crate::symbol_index::{FunctionSignature, ImportTarget, TypeBinding};
 
 impl SymbolCollector<'_> {
     pub(super) fn assignment_value_binding(
@@ -25,6 +25,7 @@ impl SymbolCollector<'_> {
     ) -> Option<TypeBinding> {
         type_alias_type_binding(self.module, self.imports, value)
             .or_else(|| self.local_call_return_binding(value, types))
+            .or_else(|| self.json_mapping_call_binding(value, types))
             .or_else(|| self.known_call_result_binding(value))
             .or_else(|| factory_return_binding(self.module, self.imports, self.rules, value))
             .or_else(|| self.list_comprehension_flow_binding(value, types))
@@ -59,7 +60,8 @@ impl SymbolCollector<'_> {
             ast::Expr::Name(receiver) => types
                 .get(receiver.id.as_str())
                 .cloned()
-                .or_else(|| self.class_object_binding(receiver.id.as_str())),
+                .or_else(|| self.class_object_binding(receiver.id.as_str()))
+                .or_else(|| self.external_import_binding(receiver.id.as_str())),
             value => field_read_type(self.available_classes, value, types),
         }?;
         receiver_type.external.then(|| TypeBinding {
@@ -277,7 +279,8 @@ impl SymbolCollector<'_> {
             ast::Expr::Name(receiver) => types
                 .get(receiver.id.as_str())
                 .cloned()
-                .or_else(|| self.class_object_binding(receiver.id.as_str())),
+                .or_else(|| self.class_object_binding(receiver.id.as_str()))
+                .or_else(|| self.external_import_binding(receiver.id.as_str())),
             expr => self
                 .local_call_return_binding(expr, types)
                 .or_else(|| constructor_binding(self.module, self.imports, self.rules, expr))
@@ -332,6 +335,7 @@ impl SymbolCollector<'_> {
             .or_else(|| self.local_call_return_binding(expr, types))
             .or_else(|| self.local_call_field_read_binding(expr, types))
             .or_else(|| self.mapping_method_call_binding(expr, types))
+            .or_else(|| self.json_mapping_call_binding(expr, types))
             .or_else(|| self.known_call_result_binding(expr))
             .or_else(|| constructor_binding(self.module, self.imports, self.rules, expr))
             .or_else(|| expr_type(self.available_classes, expr, types))
@@ -463,6 +467,40 @@ impl SymbolCollector<'_> {
             return;
         }
         collect_type_var_substitutions(annotation, &argument_type, substitutions);
+    }
+
+    fn external_import_binding(&self, name: &str) -> Option<TypeBinding> {
+        self.imports.iter().find_map(|import| {
+            if import.binding != name {
+                return None;
+            }
+            match &import.target {
+                ImportTarget::Module {
+                    module,
+                    external: true,
+                } => Some(TypeBinding {
+                    base: module.clone(),
+                    args: Vec::new(),
+                    external: true,
+                }),
+                ImportTarget::Symbol {
+                    module,
+                    name,
+                    external: true,
+                } => Some(TypeBinding {
+                    base: format!("{module}.{name}"),
+                    args: Vec::new(),
+                    external: true,
+                }),
+                ImportTarget::Module {
+                    external: false, ..
+                }
+                | ImportTarget::Symbol {
+                    external: false, ..
+                }
+                | ImportTarget::Star { .. } => None,
+            }
+        })
     }
 }
 
