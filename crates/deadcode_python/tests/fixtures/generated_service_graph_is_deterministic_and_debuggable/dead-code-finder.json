@@ -1,0 +1,4 @@
+{
+  "roots": [{ "path": "pkg", "module": "pkg" }],
+  "entrypoints": ["pkg/generated.py"]
+}

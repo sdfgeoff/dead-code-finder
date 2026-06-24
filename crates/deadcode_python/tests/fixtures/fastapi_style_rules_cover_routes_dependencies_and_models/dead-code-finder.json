@@ -1,0 +1,26 @@
+{
+  "roots": [{ "path": "api", "module": "api" }],
+  "entrypoints": ["api/main.py"],
+  "rules": {
+    "constructors": [
+      { "match": "fastapi.FastAPI", "producesType": "fastapi.FastAPI" },
+      { "match": "fastapi.APIRouter", "producesType": "fastapi.APIRouter" }
+    ],
+    "decorators": [
+      {
+        "receiverType": "fastapi.APIRouter",
+        "methods": ["get"],
+        "effect": "registerDecoratedFunction"
+      }
+    ],
+    "calls": [
+      { "function": "fastapi.Depends", "effect": "useCallableArgument", "argument": 0 },
+      {
+        "receiverType": "fastapi.FastAPI",
+        "method": "include_router",
+        "effect": "connectRouter",
+        "argument": 0
+      }
+    ]
+  }
+}

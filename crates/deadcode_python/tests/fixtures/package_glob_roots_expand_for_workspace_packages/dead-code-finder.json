@@ -1,0 +1,4 @@
+{
+  "roots": [{ "path": "packages/*/src/*", "module": "{basename}" }],
+  "entrypoints": ["packages/one/src/one/app.py"]
+}

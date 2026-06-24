@@ -1,0 +1,5 @@
+def entry():
+    pass
+
+
+entry()

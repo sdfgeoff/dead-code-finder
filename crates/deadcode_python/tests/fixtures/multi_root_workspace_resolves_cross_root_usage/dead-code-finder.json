@@ -1,0 +1,7 @@
+{
+  "roots": [
+    { "path": "apps/api", "module": "api" },
+    { "path": "libs/shared", "module": "shared" }
+  ],
+  "entrypoints": ["apps/api/main.py"]
+}
