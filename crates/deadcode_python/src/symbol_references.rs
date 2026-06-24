@@ -308,6 +308,9 @@ impl SymbolCollector<'_> {
             );
         }
         for keyword in &call.arguments.keywords {
+            if self.collect_max_key_lambda_references(owner, call, keyword, types) {
+                continue;
+            }
             self.collect_expr_references(owner, &keyword.value, types);
             let Some((constructor_type, is_type_parameter)) = constructor.as_ref() else {
                 continue;

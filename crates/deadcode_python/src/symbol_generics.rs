@@ -125,6 +125,7 @@ pub(super) fn expr_type(
         ast::Expr::Call(call) => builtin_constructor_call_type(classes, call, types)
             .or_else(|| zip_call_type(classes, call, types))
             .or_else(|| enumerate_call_type(classes, call, types))
+            .or_else(|| max_call_type(classes, call, types))
             .or_else(|| mapping_items_call_type(classes, call, types))
             .or_else(|| mapping_values_call_type(classes, call, types))
             .or_else(|| mapping_value_call_type(classes, call, types))
@@ -215,6 +216,23 @@ fn enumerate_call_type(
         }],
         external: false,
     })
+}
+
+fn max_call_type(
+    classes: &[ClassInfo],
+    call: &ast::ExprCall,
+    types: &HashMap<String, TypeBinding>,
+) -> Option<TypeBinding> {
+    let ast::Expr::Name(name) = call.func.as_ref() else {
+        return None;
+    };
+    if name.id.as_str() != "max" {
+        return None;
+    }
+    call.arguments
+        .args
+        .first()
+        .and_then(|arg| iterable_item_type(classes, arg, types))
 }
 
 pub(super) fn member_reference_target_bases(receiver_type: &TypeBinding) -> Vec<String> {
