@@ -27,6 +27,29 @@ impl SymbolCollector<'_> {
             external: false,
         })
     }
+
+    pub(super) fn dict_comprehension_flow_binding(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        let ast::Expr::DictComp(dict_comp) = expr else {
+            return None;
+        };
+        let mut scoped_types = types.clone();
+        for generator in &dict_comp.generators {
+            let item_type = self.iteration_item_type(&generator.iter, &scoped_types)?;
+            bind_comprehension_target(&generator.target, &item_type, &mut scoped_types);
+        }
+        Some(TypeBinding {
+            base: "dict".to_string(),
+            args: vec![
+                self.expression_flow_binding(&dict_comp.key, &scoped_types)?,
+                self.expression_flow_binding(&dict_comp.value, &scoped_types)?,
+            ],
+            external: false,
+        })
+    }
 }
 
 fn bind_comprehension_target(

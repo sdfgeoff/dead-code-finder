@@ -7,7 +7,9 @@ use super::symbol_branch_types::{
     coalesced_optional_type, compatible_branch_type, is_empty_list_expr,
     optional_list_or_empty_list_type, optional_list_with_empty_list_type,
 };
-use super::symbol_generics::{expr_type, field_read_type, field_type_for_receiver};
+use super::symbol_generics::{
+    expr_type, field_read_type, field_type_for_receiver, is_mapping_collection,
+};
 use super::symbol_rules::{callable_identity, constructor_binding, factory_return_binding};
 use super::symbol_types::type_binding_from_expr;
 use super::symbol_typevars::{
@@ -27,6 +29,7 @@ impl SymbolCollector<'_> {
             .or_else(|| self.known_call_result_binding(value))
             .or_else(|| factory_return_binding(self.module, self.imports, self.rules, value))
             .or_else(|| self.list_comprehension_flow_binding(value, types))
+            .or_else(|| self.dict_comprehension_flow_binding(value, types))
             .or_else(|| expr_type(self.available_classes, value, types))
             .or_else(|| constructor_binding(self.module, self.imports, self.rules, value))
             .or_else(|| self.local_call_field_read_binding(value, types))
@@ -276,7 +279,9 @@ impl SymbolCollector<'_> {
                 .get(receiver.id.as_str())
                 .cloned()
                 .or_else(|| self.class_object_binding(receiver.id.as_str())),
-            expr => constructor_binding(self.module, self.imports, self.rules, expr)
+            expr => self
+                .local_call_return_binding(expr, types)
+                .or_else(|| constructor_binding(self.module, self.imports, self.rules, expr))
                 .or_else(|| field_read_type(self.available_classes, expr, types))
                 .or_else(|| expr_type(self.available_classes, expr, types)),
         }
@@ -327,9 +332,45 @@ impl SymbolCollector<'_> {
             .or_else(|| self.binop_expression_binding(expr, types))
             .or_else(|| self.local_call_return_binding(expr, types))
             .or_else(|| self.local_call_field_read_binding(expr, types))
+            .or_else(|| self.mapping_method_call_binding(expr, types))
             .or_else(|| self.known_call_result_binding(expr))
             .or_else(|| constructor_binding(self.module, self.imports, self.rules, expr))
             .or_else(|| expr_type(self.available_classes, expr, types))
+    }
+
+    fn mapping_method_call_binding(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        let ast::Expr::Call(call) = expr else {
+            return None;
+        };
+        let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
+            return None;
+        };
+        let receiver_type = self.receiver_type_for_expr(&attribute.value, types)?;
+        if !is_mapping_collection(&receiver_type.base) {
+            return None;
+        }
+        match attribute.attr.as_str() {
+            "items" => Some(TypeBinding {
+                base: "list".to_string(),
+                args: vec![TypeBinding {
+                    base: "tuple".to_string(),
+                    args: receiver_type.args,
+                    external: false,
+                }],
+                external: false,
+            }),
+            "values" => Some(TypeBinding {
+                base: "list".to_string(),
+                args: receiver_type.args.get(1).cloned().into_iter().collect(),
+                external: false,
+            }),
+            "get" | "setdefault" => receiver_type.args.get(1).cloned(),
+            _ => None,
+        }
     }
 
     fn fluent_method_returns_self(&self, receiver_type: &TypeBinding, method: &str) -> bool {

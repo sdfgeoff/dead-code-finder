@@ -16,6 +16,10 @@ impl SymbolCollector<'_> {
         iterable_item_type(self.available_classes, iter, types).or_else(|| {
             self.local_call_return_binding(iter, types)
                 .and_then(|binding| collection_item_type(&binding))
+                .or_else(|| {
+                    self.expression_flow_binding(iter, types)
+                        .and_then(|binding| collection_item_type(&binding))
+                })
         })
     }
 }

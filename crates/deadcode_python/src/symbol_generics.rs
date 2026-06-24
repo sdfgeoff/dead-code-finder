@@ -496,7 +496,7 @@ fn is_callable_type(type_name: &str) -> bool {
     )
 }
 
-fn is_mapping_collection(type_name: &str) -> bool {
+pub(super) fn is_mapping_collection(type_name: &str) -> bool {
     matches!(type_name, "dict" | "typing.Dict" | "typing.Mapping") || type_name.ends_with(".dict")
 }
 
@@ -541,12 +541,9 @@ fn dict_comprehension_type(
     let [generator] = dict_comp.generators.as_slice() else {
         return None;
     };
-    let ast::Expr::Name(target) = &generator.target else {
-        return None;
-    };
     let item_type = iterable_item_type(classes, &generator.iter, types)?;
     let mut scoped_types = types.clone();
-    scoped_types.insert(target.id.as_str().to_string(), item_type);
+    bind_comprehension_target(&generator.target, &item_type, &mut scoped_types);
     let key_type = expr_type(classes, &dict_comp.key, &scoped_types)
         .unwrap_or_else(|| TypeBinding::erased("object".to_string()));
     Some(TypeBinding {

@@ -244,6 +244,9 @@ impl SymbolCollector<'_> {
             ast::Expr::ListComp(list_comp) => {
                 self.collect_list_comprehension_references(owner, list_comp, types);
             }
+            ast::Expr::DictComp(dict_comp) => {
+                self.collect_dict_comprehension_references(owner, dict_comp, types);
+            }
             ast::Expr::Set(set) => {
                 for element in &set.elts {
                     self.collect_expr_references(owner, element, types);
@@ -353,42 +356,6 @@ impl SymbolCollector<'_> {
             ast::Expr::Name(name) => self.class_object_binding(name.id.as_str()),
             _ => None,
         }
-    }
-
-    fn bind_append_receiver_type(
-        &self,
-        expr: &ast::Expr,
-        types: &mut HashMap<String, TypeBinding>,
-    ) -> Option<()> {
-        let ast::Expr::Call(call) = expr else {
-            return None;
-        };
-        let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
-            return None;
-        };
-        if attribute.attr.as_str() != "append" {
-            return None;
-        }
-        let ast::Expr::Name(receiver) = attribute.value.as_ref() else {
-            return None;
-        };
-        if types.contains_key(receiver.id.as_str()) {
-            return None;
-        }
-        let item_type = call
-            .arguments
-            .args
-            .first()
-            .and_then(|arg| self.assignment_value_binding(arg, types))?;
-        types.insert(
-            receiver.id.as_str().to_string(),
-            TypeBinding {
-                base: "list".to_string(),
-                args: vec![item_type],
-                external: false,
-            },
-        );
-        Some(())
     }
 
     fn collect_assignment_target(

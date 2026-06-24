@@ -1,5 +1,7 @@
 #[path = "symbol_aliases.rs"]
 mod symbol_aliases;
+#[path = "symbol_append.rs"]
+mod symbol_append;
 #[path = "symbol_branch_types.rs"]
 mod symbol_branch_types;
 #[path = "symbol_comprehension_narrowing.rs"]
