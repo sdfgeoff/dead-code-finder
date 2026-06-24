@@ -21,8 +21,9 @@ pub(super) fn type_binding_from_expr(
         }),
         ast::Expr::Subscript(subscript) => {
             let base = type_binding_from_expr(module, imports, &subscript.value)?;
+            let external = base.external && !is_typing_container(&base.base);
             Some(TypeBinding {
-                external: base.external,
+                external,
                 base: base.base,
                 args: type_args_from_expr(module, imports, &subscript.slice),
             })
@@ -176,6 +177,22 @@ fn is_builtin_type(name: &str) -> bool {
             | "set"
             | "str"
             | "tuple"
+    )
+}
+
+fn is_typing_container(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "typing.Optional"
+            | "typing.Union"
+            | "typing.List"
+            | "typing.Dict"
+            | "typing.Mapping"
+            | "typing.Sequence"
+            | "typing.Set"
+            | "typing.Tuple"
+            | "typing.Type"
+            | "typing_extensions.Type"
     )
 }
 

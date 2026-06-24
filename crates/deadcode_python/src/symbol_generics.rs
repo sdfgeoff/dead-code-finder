@@ -118,6 +118,7 @@ pub(super) fn expr_type(
         }
         ast::Expr::Dict(dict) => dict_type(classes, &dict.items, types),
         ast::Expr::DictComp(dict_comp) => dict_comprehension_type(classes, dict_comp, types),
+        ast::Expr::NoneLiteral(_) => Some(TypeBinding::erased("None".to_string())),
         ast::Expr::StringLiteral(_) => Some(TypeBinding {
             base: "str".to_string(),
             args: Vec::new(),
@@ -197,7 +198,10 @@ fn is_iterable_collection(type_name: &str) -> bool {
 }
 
 fn is_union_type(type_name: &str) -> bool {
-    matches!(type_name, "typing.Union" | "types.UnionType")
+    matches!(
+        type_name,
+        "typing.Union" | "types.UnionType" | "typing.Optional" | "Optional"
+    )
 }
 
 fn is_none_type(type_name: &str) -> bool {

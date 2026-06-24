@@ -154,13 +154,21 @@ impl SymbolCollector<'_> {
         let ast::Expr::If(if_expr) = expr else {
             return None;
         };
-        let body = self
-            .cast_or_if_expression_binding(&if_expr.body, types)
-            .or_else(|| expr_type(self.available_classes, &if_expr.body, types))?;
-        let orelse = self
-            .cast_or_if_expression_binding(&if_expr.orelse, types)
-            .or_else(|| expr_type(self.available_classes, &if_expr.orelse, types))?;
-        compatible_branch_type(&body, &orelse).cloned()
+        let body = self.expression_flow_binding(&if_expr.body, types)?;
+        let orelse = self.expression_flow_binding(&if_expr.orelse, types)?;
+        compatible_branch_type(&body, &orelse)
+    }
+
+    fn expression_flow_binding(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        self.cast_or_if_expression_binding(expr, types)
+            .or_else(|| self.local_call_return_binding(expr, types))
+            .or_else(|| self.local_call_field_read_binding(expr, types))
+            .or_else(|| constructor_binding(self.module, self.imports, self.rules, expr))
+            .or_else(|| expr_type(self.available_classes, expr, types))
     }
 
     fn fluent_method_returns_self(&self, receiver_type: &TypeBinding, method: &str) -> bool {
@@ -253,12 +261,49 @@ impl SymbolCollector<'_> {
     }
 }
 
-fn compatible_branch_type<'a>(
-    left: &'a TypeBinding,
-    right: &'a TypeBinding,
-) -> Option<&'a TypeBinding> {
-    (left.base == right.base && left.args == right.args && left.external == right.external)
-        .then_some(left)
+fn compatible_branch_type(left: &TypeBinding, right: &TypeBinding) -> Option<TypeBinding> {
+    if left.base == right.base && left.args == right.args && left.external == right.external {
+        return Some(left.clone());
+    }
+    optional_branch_type(left, right)
+        .or_else(|| optional_branch_type(right, left))
+        .or_else(|| optional_value_branch_type(left, right))
+        .or_else(|| optional_value_branch_type(right, left))
+}
+
+fn optional_branch_type(value: &TypeBinding, maybe_none: &TypeBinding) -> Option<TypeBinding> {
+    if !is_none_type(maybe_none) {
+        return None;
+    }
+    if is_optional_type(value) {
+        return Some(value.clone());
+    }
+    Some(TypeBinding {
+        base: "typing.Optional".to_string(),
+        args: vec![value.clone()],
+        external: false,
+    })
+}
+
+fn is_optional_type(binding: &TypeBinding) -> bool {
+    matches!(binding.base.as_str(), "typing.Optional" | "Optional")
+}
+
+fn optional_value_branch_type(optional: &TypeBinding, value: &TypeBinding) -> Option<TypeBinding> {
+    if !is_optional_type(optional) {
+        return None;
+    }
+    optional
+        .args
+        .first()
+        .is_some_and(|inner| inner.base == value.base && inner.args == value.args)
+        .then(|| optional.clone())
+}
+
+fn is_none_type(binding: &TypeBinding) -> bool {
+    matches!(binding.base.as_str(), "None" | "builtins.None")
+        || binding.base.ends_with(".None")
+        || binding.base.ends_with(".NoneType")
 }
 
 fn type_var_from_type_argument(annotation: Option<&TypeBinding>) -> Option<&str> {

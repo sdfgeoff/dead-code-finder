@@ -2,6 +2,8 @@
 mod symbol_context;
 #[path = "symbol_expr.rs"]
 mod symbol_expr;
+#[path = "symbol_external.rs"]
+mod symbol_external;
 #[path = "symbol_fields.rs"]
 mod symbol_fields;
 #[path = "symbol_generics.rs"]

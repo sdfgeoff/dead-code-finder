@@ -451,19 +451,6 @@ impl SymbolCollector<'_> {
             binding,
         });
     }
-
-    fn mark_external_if_outside_project(&self, binding: &mut TypeBinding) {
-        if binding.external || self.is_project_type(&binding.base) {
-            return;
-        }
-        binding.external = true;
-    }
-
-    fn is_project_type(&self, type_name: &str) -> bool {
-        self.known_modules
-            .iter()
-            .any(|module| type_name == module || type_name.starts_with(&format!("{module}.")))
-    }
 }
 
 fn import_target_is_external(target: &ImportTarget) -> bool {

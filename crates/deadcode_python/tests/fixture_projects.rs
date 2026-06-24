@@ -137,6 +137,19 @@ fn local_call_result_field_read_resolves_type() {
 }
 
 #[test]
+fn optional_ifexp_resolves_guarded_field_reads() {
+    let report = analyze_fixture("optional_ifexp_resolves_guarded_field_reads");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Settings.actions".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Settings.notifications".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Actions.enabled".to_string()));
+    assert!(symbols.contains(&"pkg.main.Actions.unused".to_string()));
+    assert!(symbols.contains(&"pkg.main.Settings.unused".to_string()));
+}
+
+#[test]
 fn local_return_list_iteration_resolves_item_fields() {
     let report = analyze_fixture("local_return_list_iteration_resolves_item_fields");
     let symbols = finding_symbols(&report);
