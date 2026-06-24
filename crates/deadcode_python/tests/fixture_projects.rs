@@ -209,6 +209,14 @@ fn string_methods_and_unpacking_bind_builtin_types() {
 }
 
 #[test]
+fn builtin_constructor_method_chain_unpack() {
+    let report = analyze_fixture("builtin_constructor_method_chain_unpack");
+
+    assert!(report.findings.is_empty());
+    assert!(report.diagnostics.is_empty());
+}
+
+#[test]
 fn string_join_result_is_string() {
     let report = analyze_fixture("string_join_result_is_string");
     let symbols = finding_symbols(&report);

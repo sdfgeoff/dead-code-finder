@@ -104,7 +104,8 @@ pub(super) fn expr_type(
             collection_item_type(&expr_type(classes, &subscript.value, types)?)
         }
         ast::Expr::Await(await_expr) => expr_type(classes, &await_expr.value, types),
-        ast::Expr::Call(call) => mapping_items_call_type(classes, call, types)
+        ast::Expr::Call(call) => builtin_constructor_call_type(call)
+            .or_else(|| mapping_items_call_type(classes, call, types))
             .or_else(|| mapping_value_call_type(classes, call, types))
             .or_else(|| builtin_method_call_type(classes, call, types))
             .or_else(|| callable_call_return_type(classes, call, types))
@@ -225,6 +226,17 @@ pub(super) fn collection_item_type(collection_type: &TypeBinding) -> Option<Type
         });
     }
     None
+}
+
+fn builtin_constructor_call_type(call: &ast::ExprCall) -> Option<TypeBinding> {
+    let ast::Expr::Name(name) = call.func.as_ref() else {
+        return None;
+    };
+    matches!(
+        name.id.as_str(),
+        "bool" | "bytes" | "complex" | "float" | "int" | "str"
+    )
+    .then(|| TypeBinding::erased(name.id.as_str().to_string()))
 }
 
 fn mapping_items_call_type(
