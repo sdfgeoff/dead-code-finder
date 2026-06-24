@@ -227,6 +227,22 @@ fn builtin_constructor_method_chain_unpack() {
 }
 
 #[test]
+fn io_bytesio_constructor_and_tuple_return() {
+    let report = analyze_fixture("io_bytesio_constructor_and_tuple_return");
+
+    assert!(report.findings.is_empty());
+    assert!(report.diagnostics.is_empty());
+}
+
+#[test]
+fn pathlib_path_join_preserves_external_receiver() {
+    let report = analyze_fixture("pathlib_path_join_preserves_external_receiver");
+
+    assert!(report.findings.is_empty());
+    assert!(report.diagnostics.is_empty());
+}
+
+#[test]
 fn builtin_collection_constructor_preserves_iterable_item_type() {
     let report = analyze_fixture("builtin_collection_constructor_preserves_iterable_item_type");
     let symbols = finding_symbols(&report);

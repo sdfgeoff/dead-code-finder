@@ -5,6 +5,7 @@ use ruff_text_size::Ranged;
 
 use super::symbol_expr::target_name;
 use super::symbol_generics::{expr_type, member_reference_target_bases};
+use super::symbol_imports::{collect_import, collect_import_from};
 use super::symbol_iteration::{bind_collection_unpack_target, bind_iteration_target};
 use super::symbol_members::push_member_reference;
 use super::symbol_rules::{
@@ -31,6 +32,28 @@ impl SymbolCollector<'_> {
                 self.collect_function_references(&function_owner, function, types);
             }
             ast::Stmt::ClassDef(_) => {}
+            ast::Stmt::Import(import) => {
+                collect_import(
+                    self.file,
+                    self.locator,
+                    self.imports,
+                    self.known_modules,
+                    import,
+                );
+            }
+            ast::Stmt::ImportFrom(import_from) => {
+                let import_start = self.imports.len();
+                collect_import_from(
+                    self.module,
+                    self.file,
+                    self.locator,
+                    self.imports,
+                    self.known_modules,
+                    self.reexports,
+                    import_from,
+                );
+                self.push_imported_value_bindings(types, import_start);
+            }
             ast::Stmt::Expr(expr) => self.collect_expr_references(owner, &expr.value, types),
             ast::Stmt::Return(ret) => {
                 if let Some(value) = &ret.value {

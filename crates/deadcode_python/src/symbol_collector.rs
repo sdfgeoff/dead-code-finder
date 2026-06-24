@@ -4,6 +4,8 @@ mod symbol_context;
 mod symbol_expr;
 #[path = "symbol_external.rs"]
 mod symbol_external;
+#[path = "symbol_external_flow.rs"]
+mod symbol_external_flow;
 #[path = "symbol_fields.rs"]
 mod symbol_fields;
 #[path = "symbol_generics.rs"]

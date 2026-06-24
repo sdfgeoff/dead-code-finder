@@ -22,6 +22,7 @@ impl SymbolCollector<'_> {
             .or_else(|| self.cast_or_if_expression_binding(value, types))
             .or_else(|| self.bool_or_expression_binding(value, types))
             .or_else(|| self.binop_expression_binding(value, types))
+            .or_else(|| self.external_expr_binding(value, types))
             .or_else(|| self.fluent_self_call_binding(value, types))
             .or_else(|| self.external_call_result_binding(value, types))
             .or_else(|| type_binding_from_expr(self.module, self.imports, value))
@@ -64,6 +65,7 @@ impl SymbolCollector<'_> {
             | "datetime.datetime.strptime"
             | "datetime.datetime.combine" => "datetime.datetime",
             "datetime.date.today" | "datetime.date.fromtimestamp" => "datetime.date",
+            "pathlib.Path" => "pathlib.Path",
             _ => return None,
         };
         Some(TypeBinding {
@@ -81,12 +83,38 @@ impl SymbolCollector<'_> {
         let ast::Expr::BinOp(bin_op) = expr else {
             return None;
         };
+        if bin_op.op == ast::Operator::Div && self.is_pathlib_path_expr(&bin_op.left) {
+            return Some(TypeBinding {
+                base: "pathlib.Path".to_string(),
+                args: Vec::new(),
+                external: true,
+            });
+        }
         let left = self.expression_flow_binding(&bin_op.left, types)?;
         let right = self.expression_flow_binding(&bin_op.right, types)?;
         match bin_op.op {
             ast::Operator::Add if is_datetime_like(&left) && is_timedelta(&right) => Some(left),
             ast::Operator::Sub if is_datetime_like(&left) && is_timedelta(&right) => Some(left),
+            ast::Operator::Div if left.external => Some(left),
             _ => None,
+        }
+    }
+
+    fn is_pathlib_path_expr(&self, expr: &ast::Expr) -> bool {
+        match expr {
+            ast::Expr::Call(call) => match call.func.as_ref() {
+                ast::Expr::Name(_) => {
+                    callable_identity(self.module, self.imports, &call.func).as_deref()
+                        == Some("pathlib.Path")
+                }
+                ast::Expr::Attribute(attribute) => self.is_pathlib_path_expr(&attribute.value),
+                _ => false,
+            },
+            ast::Expr::Attribute(attribute) => self.is_pathlib_path_expr(&attribute.value),
+            ast::Expr::BinOp(bin_op) if bin_op.op == ast::Operator::Div => {
+                self.is_pathlib_path_expr(&bin_op.left)
+            }
+            _ => false,
         }
     }
 
@@ -200,7 +228,7 @@ impl SymbolCollector<'_> {
         }
     }
 
-    fn receiver_type_for_expr(
+    pub(super) fn receiver_type_for_expr(
         &self,
         expr: &ast::Expr,
         types: &HashMap<String, TypeBinding>,
