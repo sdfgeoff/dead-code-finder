@@ -79,6 +79,18 @@ fn builtin_open_context_manager_suppresses_file_reads() {
 }
 
 #[test]
+fn contextmanager_wraps_generator_return() {
+    let report = analyze_fixture("contextmanager_wraps_generator_return");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Resource.used".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Resource.used_field".to_string()));
+    assert!(symbols.contains(&"pkg.main.Resource.unused".to_string()));
+    assert!(symbols.contains(&"pkg.main.Resource.unused_field".to_string()));
+}
+
+#[test]
 fn external_type_flows_suppress_unresolved_receivers() {
     let report = analyze_fixture("external_type_flows_suppress_unresolved_receivers");
 
