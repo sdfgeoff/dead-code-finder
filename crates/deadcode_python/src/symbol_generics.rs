@@ -86,8 +86,10 @@ pub(super) fn expr_type(
             collection_item_type(&expr_type(classes, &subscript.value, types)?)
         }
         ast::Expr::Await(await_expr) => expr_type(classes, &await_expr.value, types),
-        ast::Expr::Call(call) => mapping_value_call_type(classes, call, types)
-            .or_else(|| callable_call_return_type(classes, call, types)),
+        ast::Expr::Call(call) => mapping_items_call_type(classes, call, types)
+            .or_else(|| mapping_value_call_type(classes, call, types))
+            .or_else(|| callable_call_return_type(classes, call, types))
+            .or_else(|| unique_class_constructor_type(classes, call)),
         ast::Expr::List(list) => {
             list_item_type(classes, &list.elts, types).map(|item| TypeBinding {
                 base: "list".to_string(),
@@ -95,6 +97,12 @@ pub(super) fn expr_type(
                 external: false,
             })
         }
+        ast::Expr::Dict(dict) => dict_type(classes, &dict.items, types),
+        ast::Expr::StringLiteral(_) => Some(TypeBinding {
+            base: "str".to_string(),
+            args: Vec::new(),
+            external: false,
+        }),
         _ => None,
     }
 }
@@ -195,6 +203,32 @@ fn collection_item_type(collection_type: &TypeBinding) -> Option<TypeBinding> {
     None
 }
 
+fn mapping_items_call_type(
+    classes: &[ClassInfo],
+    call: &ast::ExprCall,
+    types: &HashMap<String, TypeBinding>,
+) -> Option<TypeBinding> {
+    let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
+        return None;
+    };
+    if attribute.attr.as_str() != "items" {
+        return None;
+    }
+    let receiver_type = expr_type(classes, &attribute.value, types)?;
+    if !is_mapping_collection(&receiver_type.base) {
+        return None;
+    }
+    Some(TypeBinding {
+        base: "list".to_string(),
+        args: vec![TypeBinding {
+            base: "tuple".to_string(),
+            args: receiver_type.args,
+            external: false,
+        }],
+        external: false,
+    })
+}
+
 fn mapping_value_call_type(
     classes: &[ClassInfo],
     call: &ast::ExprCall,
@@ -225,6 +259,24 @@ fn callable_call_return_type(
     callable_type.args.last().cloned()
 }
 
+fn unique_class_constructor_type(
+    classes: &[ClassInfo],
+    call: &ast::ExprCall,
+) -> Option<TypeBinding> {
+    let ast::Expr::Name(name) = call.func.as_ref() else {
+        return None;
+    };
+    let suffix = format!(".{}", name.id.as_str());
+    let mut matches = classes
+        .iter()
+        .filter(|class_info| class_info.class.ends_with(&suffix));
+    let class_info = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    Some(TypeBinding::erased(class_info.class.clone()))
+}
+
 fn is_callable_type(type_name: &str) -> bool {
     matches!(
         type_name,
@@ -234,6 +286,39 @@ fn is_callable_type(type_name: &str) -> bool {
 
 fn is_mapping_collection(type_name: &str) -> bool {
     matches!(type_name, "dict" | "typing.Dict" | "typing.Mapping") || type_name.ends_with(".dict")
+}
+
+fn dict_type(
+    classes: &[ClassInfo],
+    items: &[ast::DictItem],
+    types: &HashMap<String, TypeBinding>,
+) -> Option<TypeBinding> {
+    let mut key_type = None;
+    let mut value_type = None;
+    for item in items {
+        let key = item
+            .key
+            .as_ref()
+            .and_then(|key| expr_type(classes, key, types))
+            .unwrap_or_else(|| TypeBinding::erased("object".to_string()));
+        let value = expr_type(classes, &item.value, types)?;
+        if key_type
+            .as_ref()
+            .is_some_and(|existing: &TypeBinding| existing != &key)
+            || value_type
+                .as_ref()
+                .is_some_and(|existing: &TypeBinding| existing != &value)
+        {
+            return None;
+        }
+        key_type = Some(key);
+        value_type = Some(value);
+    }
+    Some(TypeBinding {
+        base: "dict".to_string(),
+        args: vec![key_type?, value_type?],
+        external: false,
+    })
 }
 
 fn list_item_type(

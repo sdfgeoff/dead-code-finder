@@ -159,6 +159,17 @@ fn mapping_setdefault_results_resolve_value_fields() {
 }
 
 #[test]
+fn dict_items_iteration_resolves_value_fields() {
+    let report = analyze_fixture("dict_items_iteration_resolves_value_fields");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Heading.stock_heading".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Heading.residual_heading".to_string()));
+    assert!(symbols.contains(&"pkg.main.Heading.unused".to_string()));
+}
+
+#[test]
 fn callable_return_async_iterator_resolves_item_fields() {
     let report = analyze_fixture("callable_return_async_iterator_resolves_item_fields");
     let symbols = finding_symbols(&report);
