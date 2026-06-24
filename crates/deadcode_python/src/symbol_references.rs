@@ -4,7 +4,8 @@ use ruff_python_ast as ast;
 use ruff_text_size::Ranged;
 
 use super::symbol_expr::target_name;
-use super::symbol_generics::{expr_type, iterable_item_type, member_reference_target_bases};
+use super::symbol_generics::{expr_type, member_reference_target_bases};
+use super::symbol_iteration::bind_iteration_target;
 use super::symbol_members::push_member_reference;
 use super::symbol_rules::{
     callable_argument_references, callable_identity, constructed_type_from_callee,
@@ -114,14 +115,10 @@ impl SymbolCollector<'_> {
             ast::Stmt::For(for_stmt) => {
                 self.collect_expr_references(owner, &for_stmt.iter, types);
                 self.collect_assignment_target(owner, &for_stmt.target, types);
-                if let (Some(name), Some(item_type)) = (
-                    target_name(&for_stmt.target),
-                    iterable_item_type(self.available_classes, &for_stmt.iter, types),
-                ) {
+                let item_type = self.iteration_item_type(&for_stmt.iter, types);
+                if let (Some(name), Some(item_type)) = (target_name(&for_stmt.target), item_type) {
                     types.insert(name.to_string(), item_type);
-                } else if let Some(item_type) =
-                    iterable_item_type(self.available_classes, &for_stmt.iter, types)
-                {
+                } else if let Some(item_type) = self.iteration_item_type(&for_stmt.iter, types) {
                     bind_iteration_target(&for_stmt.target, &item_type, types);
                 }
                 for nested in &for_stmt.body {
@@ -456,26 +453,6 @@ impl SymbolCollector<'_> {
         self.known_modules
             .iter()
             .any(|module| type_name == module || type_name.starts_with(&format!("{module}.")))
-    }
-}
-
-fn bind_iteration_target(
-    target: &ast::Expr,
-    item_type: &TypeBinding,
-    types: &mut HashMap<String, TypeBinding>,
-) {
-    let tuple_items = match target {
-        ast::Expr::Tuple(tuple) => &tuple.elts,
-        ast::Expr::List(list) => &list.elts,
-        _ => return,
-    };
-    if item_type.base != "tuple" || item_type.args.len() != tuple_items.len() {
-        return;
-    }
-    for (target_item, binding) in tuple_items.iter().zip(&item_type.args) {
-        if let Some(name) = target_name(target_item) {
-            types.insert(name.to_string(), binding.clone());
-        }
     }
 }
 

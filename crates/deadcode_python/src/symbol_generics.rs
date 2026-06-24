@@ -187,7 +187,7 @@ fn is_none_type(type_name: &str) -> bool {
         || type_name.ends_with(".NoneType")
 }
 
-fn collection_item_type(collection_type: &TypeBinding) -> Option<TypeBinding> {
+pub(super) fn collection_item_type(collection_type: &TypeBinding) -> Option<TypeBinding> {
     if is_mapping_collection(&collection_type.base) {
         return collection_type.args.get(1).cloned();
     }

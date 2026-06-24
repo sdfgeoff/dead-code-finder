@@ -8,6 +8,8 @@ mod symbol_fields;
 mod symbol_generics;
 #[path = "symbol_imports.rs"]
 mod symbol_imports;
+#[path = "symbol_iteration.rs"]
+mod symbol_iteration;
 #[path = "symbol_members.rs"]
 mod symbol_members;
 #[path = "symbol_metadata.rs"]
