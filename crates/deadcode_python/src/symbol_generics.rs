@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use ruff_python_ast as ast;
 
+use super::symbol_comprehension_narrowing::apply_isinstance_narrowing;
 use super::symbol_expr::target_name;
 use crate::symbol_index::{ClassInfo, FieldAnnotation, TypeBinding};
 
@@ -123,6 +124,7 @@ pub(super) fn expr_type(
         ast::Expr::Await(await_expr) => expr_type(classes, &await_expr.value, types),
         ast::Expr::Call(call) => builtin_constructor_call_type(classes, call, types)
             .or_else(|| zip_call_type(classes, call, types))
+            .or_else(|| enumerate_call_type(classes, call, types))
             .or_else(|| mapping_items_call_type(classes, call, types))
             .or_else(|| mapping_values_call_type(classes, call, types))
             .or_else(|| mapping_value_call_type(classes, call, types))
@@ -182,6 +184,33 @@ fn zip_call_type(
         args: vec![TypeBinding {
             base: "tuple".to_string(),
             args: tuple_args,
+            external: false,
+        }],
+        external: false,
+    })
+}
+
+fn enumerate_call_type(
+    classes: &[ClassInfo],
+    call: &ast::ExprCall,
+    types: &HashMap<String, TypeBinding>,
+) -> Option<TypeBinding> {
+    let ast::Expr::Name(name) = call.func.as_ref() else {
+        return None;
+    };
+    if name.id.as_str() != "enumerate" {
+        return None;
+    }
+    let item_type = call
+        .arguments
+        .args
+        .first()
+        .and_then(|arg| iterable_item_type(classes, arg, types))?;
+    Some(TypeBinding {
+        base: "list".to_string(),
+        args: vec![TypeBinding {
+            base: "tuple".to_string(),
+            args: vec![TypeBinding::erased("int".to_string()), item_type],
             external: false,
         }],
         external: false,
@@ -531,6 +560,9 @@ fn comprehension_types(
     for generator in generators {
         let item_type = iterable_item_type(classes, &generator.iter, &scoped_types)?;
         bind_comprehension_target(&generator.target, &item_type, &mut scoped_types);
+        for guard in &generator.ifs {
+            apply_isinstance_narrowing(guard, &mut scoped_types);
+        }
     }
     Some(scoped_types)
 }

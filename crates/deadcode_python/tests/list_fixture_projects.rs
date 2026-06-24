@@ -15,6 +15,20 @@ fn list_comprehension_preserves_item_type() {
     assert!(symbols.contains(&"pkg.main.ClearanceEvent.unused".to_string()));
 }
 
+#[test]
+fn isinstance_list_comprehension_narrows_union_item() {
+    let report = analyze_fixture("isinstance_list_comprehension_narrows_union_item");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.CacheMiss.key".to_string()));
+    assert!(!symbols.contains(&"pkg.main.CacheMiss.input".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Input.value".to_string()));
+    assert!(symbols.contains(&"pkg.main.CacheMiss.unused".to_string()));
+    assert!(symbols.contains(&"pkg.main.CacheHit.unused".to_string()));
+    assert!(symbols.contains(&"pkg.main.Input.unused".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))
