@@ -54,6 +54,24 @@ fn route_glob_rules_activate_dynamic_route_modules() {
 }
 
 #[test]
+fn context_managers_and_weak_scripts_are_tracked_separately() {
+    let report = analyze_fixture("context_managers_and_weak_scripts");
+    let symbols = finding_symbols(&report);
+    let script_only = report
+        .findings
+        .iter()
+        .find(|finding| finding.symbol == "pkg.service.script_only")
+        .unwrap();
+
+    assert!(!symbols.contains(&"pkg.resources.Resource.__enter__".to_string()));
+    assert!(!symbols.contains(&"pkg.resources.Resource.__exit__".to_string()));
+    assert!(symbols.contains(&"pkg.resources.UnusedResource.__enter__".to_string()));
+    assert!(symbols.contains(&"pkg.resources.UnusedResource.__exit__".to_string()));
+    assert_eq!(script_only.reachable_from, vec!["weak".to_string()]);
+    assert!(symbols.contains(&"pkg.service.dead".to_string()));
+}
+
+#[test]
 fn scripts_inheritance_generics_and_unresolved_receivers_are_reported() {
     let report = analyze_fixture("scripts_inheritance_generics_and_unresolved_receivers");
     let symbols = finding_symbols(&report);
