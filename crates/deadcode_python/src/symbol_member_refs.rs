@@ -30,6 +30,9 @@ impl SymbolCollector<'_> {
                     .cloned()
                     .or_else(|| self.class_object_binding(receiver_name))
             }
+            value @ ast::Expr::Call(_) => self
+                .local_call_return_binding(value, types)
+                .or_else(|| expr_type(self.available_classes, value, types)),
             value => expr_type(self.available_classes, value, types)
                 .or_else(|| self.local_call_return_binding(value, types)),
         };

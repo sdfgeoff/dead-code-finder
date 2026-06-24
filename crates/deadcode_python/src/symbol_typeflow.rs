@@ -7,6 +7,8 @@ use super::symbol_branch_types::{
     coalesced_optional_type, compatible_branch_type, is_empty_list_expr,
     optional_list_or_empty_list_type, optional_list_with_empty_list_type,
 };
+use super::symbol_callable_alias::callable_alias_target;
+use super::symbol_datetime::{is_datetime_like, is_timedelta};
 use super::symbol_generics::{expr_type, field_read_type, field_type_for_receiver};
 use super::symbol_mapping_types::is_mapping_collection;
 use super::symbol_rules::{callable_identity, constructor_binding, factory_return_binding};
@@ -229,8 +231,22 @@ impl SymbolCollector<'_> {
         types: &HashMap<String, TypeBinding>,
     ) -> Option<String> {
         match expr {
-            ast::Expr::Name(name) => callable_identity(self.module, self.imports, expr)
-                .or_else(|| Some(format!("{}.{}", self.module, name.id.as_str()))),
+            ast::Expr::Name(name) => {
+                let name = name.id.as_str();
+                let same_module = format!("{}.{}", self.module, name);
+                callable_identity(self.module, self.imports, expr)
+                    .filter(|target| target != &same_module)
+                    .or_else(|| {
+                        callable_alias_target(
+                            self.module,
+                            name,
+                            types,
+                            self.available_values,
+                            self.available_fn_sigs,
+                        )
+                    })
+                    .or(Some(same_module))
+            }
             ast::Expr::Attribute(attribute) => {
                 let receiver_type = self.receiver_type_for_expr(&attribute.value, types)?;
                 Some(format!(
@@ -499,12 +515,4 @@ impl SymbolCollector<'_> {
             }
         })
     }
-}
-
-fn is_datetime_like(binding: &TypeBinding) -> bool {
-    matches!(binding.base.as_str(), "datetime.datetime" | "datetime.date")
-}
-
-fn is_timedelta(binding: &TypeBinding) -> bool {
-    binding.base == "datetime.timedelta"
 }

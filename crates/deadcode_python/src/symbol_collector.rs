@@ -10,6 +10,8 @@ mod symbol_branch_narrowing;
 mod symbol_branch_types;
 #[path = "symbol_call_args.rs"]
 mod symbol_call_args;
+#[path = "symbol_callable_alias.rs"]
+mod symbol_callable_alias;
 #[path = "symbol_comprehension_narrowing.rs"]
 mod symbol_comprehension_narrowing;
 #[path = "symbol_comprehension_typeflow.rs"]
@@ -18,6 +20,8 @@ mod symbol_comprehension_typeflow;
 mod symbol_construction;
 #[path = "symbol_context.rs"]
 mod symbol_context;
+#[path = "symbol_datetime.rs"]
+mod symbol_datetime;
 #[path = "symbol_expansion.rs"]
 mod symbol_expansion;
 #[path = "symbol_expr.rs"]
