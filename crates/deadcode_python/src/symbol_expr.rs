@@ -16,10 +16,6 @@ pub(super) fn is_main_guard(if_stmt: &ast::StmtIf) -> bool {
     )
 }
 
-pub(super) fn first_module_segment(module: &str) -> String {
-    module.split('.').next().unwrap_or(module).to_string()
-}
-
 pub(super) fn target_name(expr: &ast::Expr) -> Option<&str> {
     match expr {
         ast::Expr::Name(name) => Some(name.id.as_str()),

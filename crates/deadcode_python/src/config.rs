@@ -14,6 +14,8 @@ pub struct ProjectConfig {
     pub include_tests: bool,
     #[serde(default = "default_test_patterns")]
     pub test_patterns: Vec<String>,
+    #[serde(default)]
+    pub rules: RuleConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -31,6 +33,32 @@ pub struct LoadedProjectConfig {
     pub entrypoints: Vec<String>,
     pub include_tests: bool,
     pub test_patterns: Vec<String>,
+    pub rules: RuleConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuleConfig {
+    #[serde(default)]
+    pub constructors: Vec<ConstructorRule>,
+    #[serde(default)]
+    pub decorators: Vec<DecoratorRule>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConstructorRule {
+    #[serde(rename = "match")]
+    pub match_: String,
+    pub produces_type: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DecoratorRule {
+    pub receiver_type: String,
+    pub methods: Vec<String>,
+    pub effect: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,6 +87,9 @@ pub enum ConfigError {
         module: String,
     },
     EmptyRoots,
+    InvalidRule {
+        message: String,
+    },
 }
 
 impl std::fmt::Display for ConfigError {
@@ -87,6 +118,7 @@ impl std::fmt::Display for ConfigError {
                 write!(formatter, "duplicate configured module root: {module}")
             }
             Self::EmptyRoots => write!(formatter, "configuration must include at least one root"),
+            Self::InvalidRule { message } => write!(formatter, "invalid rule: {message}"),
         }
     }
 }
@@ -114,6 +146,7 @@ pub fn load_project_config(path: &Path) -> Result<LoadedProjectConfig, ConfigErr
         })?;
 
     let roots = resolve_roots(&project_dir, &config)?;
+    validate_rules(&config.rules)?;
     Ok(LoadedProjectConfig {
         config_path,
         project_dir,
@@ -121,7 +154,41 @@ pub fn load_project_config(path: &Path) -> Result<LoadedProjectConfig, ConfigErr
         entrypoints: config.entrypoints,
         include_tests: config.include_tests,
         test_patterns: config.test_patterns,
+        rules: config.rules,
     })
+}
+
+fn validate_rules(rules: &RuleConfig) -> Result<(), ConfigError> {
+    for constructor in &rules.constructors {
+        if constructor.match_.trim().is_empty() {
+            return Err(ConfigError::InvalidRule {
+                message: "constructor match must not be empty".to_string(),
+            });
+        }
+        if constructor.produces_type.trim().is_empty() {
+            return Err(ConfigError::InvalidRule {
+                message: "constructor producesType must not be empty".to_string(),
+            });
+        }
+    }
+    for decorator in &rules.decorators {
+        if decorator.receiver_type.trim().is_empty() {
+            return Err(ConfigError::InvalidRule {
+                message: "decorator receiverType must not be empty".to_string(),
+            });
+        }
+        if decorator.methods.is_empty() {
+            return Err(ConfigError::InvalidRule {
+                message: "decorator methods must not be empty".to_string(),
+            });
+        }
+        if decorator.effect != "registerDecoratedFunction" {
+            return Err(ConfigError::InvalidRule {
+                message: format!("unsupported decorator effect {}", decorator.effect),
+            });
+        }
+    }
+    Ok(())
 }
 
 pub fn resolve_roots(
@@ -244,6 +311,7 @@ mod tests {
             entrypoints: vec![],
             include_tests: false,
             test_patterns: default_test_patterns(),
+            rules: RuleConfig::default(),
         };
 
         let roots = resolve_roots(&workspace, &config).unwrap();
@@ -270,6 +338,7 @@ mod tests {
             entrypoints: vec![],
             include_tests: false,
             test_patterns: default_test_patterns(),
+            rules: RuleConfig::default(),
         };
 
         let roots = resolve_roots(&workspace, &config).unwrap();
@@ -308,6 +377,7 @@ mod tests {
             entrypoints: vec![],
             include_tests: false,
             test_patterns: default_test_patterns(),
+            rules: RuleConfig::default(),
         };
 
         let error = resolve_roots(&workspace, &config).unwrap_err();
@@ -334,6 +404,31 @@ mod tests {
         assert_eq!(loaded.entrypoints, vec!["main.py"]);
         assert!(loaded.include_tests);
         assert_eq!(loaded.roots[0].module, "pkg");
+    }
+
+    #[test]
+    fn rejects_invalid_rule_effects() {
+        let workspace = test_workspace("rejects_invalid_rule_effects");
+        fs::create_dir_all(workspace.join("pkg")).unwrap();
+        let config_path = workspace.join("dead-code-finder.json");
+        fs::write(
+            &config_path,
+            r#"{
+                "roots": [{"path": "pkg", "module": "pkg"}],
+                "rules": {
+                    "decorators": [{
+                        "receiverType": "framework.Router",
+                        "methods": ["get"],
+                        "effect": "doSomethingDynamic"
+                    }]
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let error = load_project_config(&config_path).unwrap_err();
+
+        assert!(matches!(error, ConfigError::InvalidRule { .. }));
     }
 
     fn test_workspace(name: &str) -> PathBuf {

@@ -10,6 +10,8 @@ mod symbol_imports;
 mod symbol_members;
 #[path = "symbol_metadata.rs"]
 mod symbol_metadata;
+#[path = "symbol_rules.rs"]
+mod symbol_rules;
 #[path = "symbol_types.rs"]
 mod symbol_types;
 
@@ -19,20 +21,23 @@ use deadcode_core::SymbolKind;
 use ruff_python_ast as ast;
 use ruff_text_size::{Ranged, TextRange};
 
-use self::symbol_expr::{first_module_segment, is_main_guard, target_name};
+use self::symbol_expr::{is_main_guard, target_name};
 use self::symbol_fields::collect_self_assignments;
 use self::symbol_generics::field_read_type;
-use self::symbol_imports::resolve_import_from_base;
+use self::symbol_imports::{collect_import, collect_import_from};
 use self::symbol_members::push_member_reference;
 use self::symbol_metadata::{class_info, function_signature};
-use self::symbol_types::{
-    constructor_type_name, type_binding_from_expr, type_name_from_expr, TypeBinding,
+use self::symbol_rules::{
+    callable_identity, constructed_type_from_callee, constructor_binding,
+    decorator_registers_function,
 };
+use self::symbol_types::{type_binding_from_expr, TypeBinding};
 use super::{
     AccessKind, CallArgumentType, ClassInfo, FunctionSignature, ImportTarget, IndexedSymbol,
     MemberReference, ResolvedImport, SourceLocator, SymbolReference, UnresolvedReceiver,
     UnsupportedExpansion,
 };
+use crate::config::RuleConfig;
 
 pub(super) struct SymbolCollector<'a> {
     pub(super) module: &'a str,
@@ -49,16 +54,22 @@ pub(super) struct SymbolCollector<'a> {
     pub(super) unsupported: &'a mut Vec<UnsupportedExpansion>,
     pub(super) main_entry: &'a mut bool,
     pub(super) known_modules: &'a HashSet<String>,
+    pub(super) rules: &'a RuleConfig,
 }
 
 impl SymbolCollector<'_> {
     pub(super) fn collect_suite(&mut self, suite: &[ast::Stmt]) {
+        let mut module_types = HashMap::new();
         for statement in suite {
-            self.collect_module_statement(statement);
+            self.collect_module_statement(statement, &mut module_types);
         }
     }
 
-    fn collect_module_statement(&mut self, statement: &ast::Stmt) {
+    fn collect_module_statement(
+        &mut self,
+        statement: &ast::Stmt,
+        module_types: &mut HashMap<String, TypeBinding>,
+    ) {
         match statement {
             ast::Stmt::FunctionDef(function) => {
                 let function_owner = format!("{}.{}", self.module, function.name.as_str());
@@ -69,6 +80,7 @@ impl SymbolCollector<'_> {
                     function.range,
                 );
                 self.push_function_signature(&function_owner, function);
+                self.collect_decorator_rules(function, module_types);
                 let types = self.function_type_bindings(function, None);
                 self.collect_function_references(&function_owner, &function.body, types);
             }
@@ -84,64 +96,30 @@ impl SymbolCollector<'_> {
                 self.collect_class_body(class_name, &class_def.body);
             }
             ast::Stmt::Import(import) => {
-                for alias in &import.names {
-                    let target_module = alias.name.as_str().to_string();
-                    let binding = alias
-                        .asname
-                        .as_ref()
-                        .map_or_else(|| first_module_segment(&target_module), ToString::to_string);
-                    self.push_import(
-                        binding,
-                        ImportTarget::Module {
-                            external: !self.known_modules.contains(&target_module),
-                            module: target_module,
-                        },
-                        import.range,
-                    );
-                }
+                collect_import(
+                    self.file,
+                    self.locator,
+                    self.imports,
+                    self.known_modules,
+                    import,
+                );
             }
             ast::Stmt::ImportFrom(import_from) => {
-                let Some(base_module) = resolve_import_from_base(self.module, import_from) else {
-                    return;
-                };
-                let base_is_external = !self.known_modules.contains(&base_module);
-                for alias in &import_from.names {
-                    let imported_name = alias.name.as_str();
-                    let binding = alias
-                        .asname
-                        .as_ref()
-                        .map_or_else(|| imported_name.to_string(), ToString::to_string);
-                    let target = if imported_name == "*" {
-                        ImportTarget::Star {
-                            external: base_is_external,
-                            module: base_module.clone(),
-                        }
-                    } else {
-                        let candidate_module = format!("{base_module}.{imported_name}");
-                        if self.known_modules.contains(&candidate_module) {
-                            ImportTarget::Module {
-                                external: false,
-                                module: candidate_module,
-                            }
-                        } else {
-                            ImportTarget::Symbol {
-                                external: base_is_external,
-                                module: base_module.clone(),
-                                name: imported_name.to_string(),
-                            }
-                        }
-                    };
-                    self.push_import(binding, target, import_from.range);
-                }
+                collect_import_from(
+                    self.module,
+                    self.file,
+                    self.locator,
+                    self.imports,
+                    self.known_modules,
+                    import_from,
+                );
             }
             ast::Stmt::If(if_stmt) if is_main_guard(if_stmt) => {
                 *self.main_entry = true;
-                let mut types = HashMap::new();
-                self.collect_statement_references(self.module, statement, &mut types);
+                self.collect_statement_references(self.module, statement, module_types);
             }
             statement => {
-                let mut types = HashMap::new();
-                self.collect_statement_references(self.module, statement, &mut types);
+                self.collect_statement_references(self.module, statement, module_types);
             }
         }
     }
@@ -212,14 +190,6 @@ impl SymbolCollector<'_> {
         });
     }
 
-    fn push_import(&mut self, binding: String, target: ImportTarget, range: TextRange) {
-        self.imports.push(ResolvedImport {
-            binding,
-            target,
-            span: self.locator.span_from_range_string(self.file, range),
-        });
-    }
-
     fn push_class_info(&mut self, class: String, class_def: &ast::StmtClassDef) {
         self.classes
             .push(class_info(self.module, self.imports, class, class_def));
@@ -240,6 +210,19 @@ impl SymbolCollector<'_> {
             name: name.to_string(),
             span: self.locator.span_from_range_string(self.file, range),
         });
+    }
+
+    fn collect_decorator_rules(
+        &mut self,
+        function: &ast::StmtFunctionDef,
+        types: &HashMap<String, TypeBinding>,
+    ) {
+        for decorator in &function.decorator_list {
+            if decorator_registers_function(self.rules, &decorator.expression, types) {
+                self.push_reference(self.module, function.name.as_str(), decorator.range);
+            }
+            self.collect_expr_references(self.module, &decorator.expression, types);
+        }
     }
 
     fn collect_function_references(
@@ -278,11 +261,11 @@ impl SymbolCollector<'_> {
                     self.collect_assignment_target(owner, target, types);
                 }
                 if let Some(type_name) =
-                    constructor_type_name(self.module, self.imports, &assign.value)
+                    constructor_binding(self.module, self.imports, self.rules, &assign.value)
                 {
                     for target in &assign.targets {
                         if let Some(name) = target_name(target) {
-                            types.insert(name.to_string(), TypeBinding::erased(type_name.clone()));
+                            types.insert(name.to_string(), type_name.clone());
                         }
                     }
                 }
@@ -371,23 +354,24 @@ impl SymbolCollector<'_> {
             self.collect_expr_references(owner, &call.func, types);
         }
 
-        let callee = type_name_from_expr(self.module, self.imports, &call.func);
+        let callee = callable_identity(self.module, self.imports, &call.func);
         for (position, arg) in call.arguments.args.iter().enumerate() {
             if let (Some(callee), Some(concrete_type)) = (
                 callee.as_ref(),
-                constructor_type_name(self.module, self.imports, arg),
+                constructor_binding(self.module, self.imports, self.rules, arg),
             ) {
                 self.call_args.push(CallArgumentType {
                     from: owner.to_string(),
                     callee: callee.clone(),
                     position,
-                    concrete_type,
+                    concrete_type: concrete_type.base,
                     span: self.locator.span_from_range_string(self.file, arg.range()),
                 });
             }
             self.collect_expr_references(owner, arg, types);
         }
-        let constructor_type = type_name_from_expr(self.module, self.imports, &call.func);
+        let constructor_type =
+            constructed_type_from_callee(self.module, self.imports, self.rules, &call.func);
         for keyword in &call.arguments.keywords {
             self.collect_expr_references(owner, &keyword.value, types);
             let Some(constructor_type) = constructor_type.as_ref() else {

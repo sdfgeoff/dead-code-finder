@@ -119,6 +119,86 @@ live()
         assert_eq!(report.findings[0].symbol, "pkg.main.dead");
     }
 
+    #[test]
+    fn declarative_rules_register_decorated_functions() {
+        let workspace = test_workspace("declarative_rules_register_decorated_functions");
+        std::fs::create_dir_all(workspace.join("pkg")).unwrap();
+        std::fs::write(
+            workspace.join("pkg/main.py"),
+            r#"
+from toyframework import Router
+
+router = Router()
+
+@router.get("/items")
+def list_items():
+    pass
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            workspace.join("dead-code-finder.json"),
+            r#"{
+                "roots": [{"path": "pkg", "module": "pkg"}],
+                "entrypoints": ["pkg/main.py"],
+                "rules": {
+                    "constructors": [{
+                        "match": "toyframework.Router",
+                        "producesType": "toyframework.Router"
+                    }],
+                    "decorators": [{
+                        "receiverType": "toyframework.Router",
+                        "methods": ["get"],
+                        "effect": "registerDecoratedFunction"
+                    }]
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let report = analyze_project(&AnalyzeOptions::new(
+            workspace.join("dead-code-finder.json"),
+        ))
+        .unwrap();
+
+        assert!(report.is_clean());
+    }
+
+    #[test]
+    fn decorators_without_rules_do_not_keep_functions_alive() {
+        let workspace = test_workspace("decorators_without_rules_do_not_keep_functions_alive");
+        std::fs::create_dir_all(workspace.join("pkg")).unwrap();
+        std::fs::write(
+            workspace.join("pkg/main.py"),
+            r#"
+from toyframework import Router
+
+router = Router()
+
+@router.get("/items")
+def list_items():
+    pass
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            workspace.join("dead-code-finder.json"),
+            r#"{
+                "roots": [{"path": "pkg", "module": "pkg"}],
+                "entrypoints": ["pkg/main.py"]
+            }"#,
+        )
+        .unwrap();
+
+        let report = analyze_project(&AnalyzeOptions::new(
+            workspace.join("dead-code-finder.json"),
+        ))
+        .unwrap();
+
+        assert_eq!(report.findings.len(), 1);
+        assert_eq!(report.findings[0].symbol, "pkg.main.list_items");
+    }
+
     fn test_workspace(name: &str) -> std::path::PathBuf {
         let unique = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

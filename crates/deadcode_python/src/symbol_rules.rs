@@ -1,0 +1,118 @@
+use std::collections::HashMap;
+
+use ruff_python_ast as ast;
+
+use crate::config::RuleConfig;
+use crate::symbol_index::{ImportTarget, ResolvedImport};
+
+use super::symbol_types::{constructor_type_name, type_name_from_expr, TypeBinding};
+
+pub(super) fn decorator_registers_function(
+    rules: &RuleConfig,
+    expr: &ast::Expr,
+    types: &HashMap<String, TypeBinding>,
+) -> bool {
+    let ast::Expr::Call(call) = expr else {
+        return false;
+    };
+    let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
+        return false;
+    };
+    let ast::Expr::Name(receiver) = attribute.value.as_ref() else {
+        return false;
+    };
+    let Some(receiver_type) = types.get(receiver.id.as_str()) else {
+        return false;
+    };
+    rules.decorators.iter().any(|rule| {
+        rule.effect == "registerDecoratedFunction"
+            && rule.receiver_type == receiver_type.base
+            && rule
+                .methods
+                .iter()
+                .any(|method| method == attribute.attr.as_str())
+    })
+}
+
+pub(super) fn constructor_binding(
+    module: &str,
+    imports: &[ResolvedImport],
+    rules: &RuleConfig,
+    expr: &ast::Expr,
+) -> Option<TypeBinding> {
+    constructor_type_name(module, imports, expr)
+        .map(TypeBinding::erased)
+        .or_else(|| {
+            let ast::Expr::Call(call) = expr else {
+                return None;
+            };
+            constructed_type_from_callee(module, imports, rules, &call.func)
+                .map(TypeBinding::erased)
+        })
+}
+
+pub(super) fn constructed_type_from_callee(
+    module: &str,
+    imports: &[ResolvedImport],
+    rules: &RuleConfig,
+    callee: &ast::Expr,
+) -> Option<String> {
+    type_name_from_expr(module, imports, callee).or_else(|| {
+        let callable = callable_identity(module, imports, callee)?;
+        rules
+            .constructors
+            .iter()
+            .find(|rule| rule.match_ == callable)
+            .map(|rule| rule.produces_type.clone())
+    })
+}
+
+pub(super) fn callable_identity(
+    module: &str,
+    imports: &[ResolvedImport],
+    expr: &ast::Expr,
+) -> Option<String> {
+    match expr {
+        ast::Expr::Name(name) => resolve_name_identity(module, imports, name.id.as_str()),
+        ast::Expr::Attribute(attribute) => resolve_attribute_identity(module, imports, attribute),
+        ast::Expr::Subscript(subscript) => callable_identity(module, imports, &subscript.value),
+        _ => None,
+    }
+}
+
+fn resolve_name_identity(module: &str, imports: &[ResolvedImport], name: &str) -> Option<String> {
+    for import in imports.iter() {
+        if import.binding != name {
+            continue;
+        }
+        return match &import.target {
+            ImportTarget::Symbol { module, name, .. } => Some(format!("{module}.{name}")),
+            ImportTarget::Module { module, .. } => Some(module.clone()),
+            ImportTarget::Star { .. } => None,
+        };
+    }
+    Some(format!("{module}.{name}"))
+}
+
+fn resolve_attribute_identity(
+    module: &str,
+    imports: &[ResolvedImport],
+    attribute: &ast::ExprAttribute,
+) -> Option<String> {
+    let mut parts = vec![attribute.attr.as_str().to_string()];
+    let mut value = attribute.value.as_ref();
+    loop {
+        match value {
+            ast::Expr::Name(name) => {
+                let base = resolve_name_identity(module, imports, name.id.as_str())?;
+                parts.reverse();
+                return Some(format!("{}.{}", base, parts.join(".")));
+            }
+            ast::Expr::Attribute(nested) => {
+                parts.push(nested.attr.as_str().to_string());
+                value = nested.value.as_ref();
+            }
+            _ => return None,
+        }
+    }
+}

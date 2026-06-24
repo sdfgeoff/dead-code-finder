@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use deadcode_core::{Diagnostic, Severity, SourceSpan, SymbolKind};
 use ruff_text_size::TextRange;
 
-use crate::config::{LoadedProjectConfig, ResolvedRoot};
+use crate::config::{LoadedProjectConfig, ResolvedRoot, RuleConfig};
 
 use self::symbol_collector::SymbolCollector;
 
@@ -218,6 +218,7 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
                 &module,
                 &file,
                 &index.known_modules,
+                &config.rules,
                 is_configured_entrypoint(config, &file),
             )?;
             index
@@ -279,6 +280,7 @@ fn index_module(
     module: &str,
     file: &Path,
     known_modules: &HashSet<String>,
+    rules: &RuleConfig,
     is_configured_entrypoint: bool,
 ) -> Result<IndexedModuleResult, SymbolIndexError> {
     let source = fs::read_to_string(file).map_err(|source| SymbolIndexError::ReadFile {
@@ -322,6 +324,7 @@ fn index_module(
                 unsupported: &mut unsupported_expansions,
                 main_entry: &mut has_main_entrypoint,
                 known_modules,
+                rules,
             };
             collector.collect_suite(suite);
         }

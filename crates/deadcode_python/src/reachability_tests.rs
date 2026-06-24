@@ -575,6 +575,7 @@ live()
             entrypoints,
             include_tests: false,
             test_patterns: Vec::new(),
+            rules: crate::config::RuleConfig::default(),
         }
     }
 
