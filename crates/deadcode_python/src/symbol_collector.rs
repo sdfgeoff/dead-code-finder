@@ -28,6 +28,8 @@ mod symbol_rules;
 mod symbol_typeflow;
 #[path = "symbol_types.rs"]
 mod symbol_types;
+#[path = "symbol_typevars.rs"]
+mod symbol_typevars;
 
 use std::collections::{HashMap, HashSet};
 
@@ -94,11 +96,11 @@ impl SymbolCollector<'_> {
                     SymbolKind::Function,
                     function.range,
                 );
-                self.push_function_signature(&function_owner, function);
-                self.collect_function_annotation_references(&function_owner, function);
-                self.collect_decorator_rules(function, module_types);
                 let mut types = module_types.clone();
                 types.extend(self.function_type_bindings(function, None, module_types));
+                self.push_function_signature(&function_owner, function, &types);
+                self.collect_function_annotation_references(&function_owner, function);
+                self.collect_decorator_rules(function, module_types);
                 self.collect_function_references(&function_owner, function, types);
             }
             ast::Stmt::ClassDef(class_def) => {
@@ -161,8 +163,6 @@ impl SymbolCollector<'_> {
                         SymbolKind::Method,
                         function.range,
                     );
-                    self.push_function_signature(&method_owner, function);
-                    self.collect_function_annotation_references(&method_owner, function);
                     collect_self_assignments(
                         self.module,
                         self.file,
@@ -177,6 +177,8 @@ impl SymbolCollector<'_> {
                         Some(class_name),
                         module_types,
                     ));
+                    self.push_function_signature(&method_owner, function, &types);
+                    self.collect_function_annotation_references(&method_owner, function);
                     self.collect_function_references(&method_owner, function, types);
                 }
                 ast::Stmt::AnnAssign(assign) => {
@@ -232,13 +234,42 @@ impl SymbolCollector<'_> {
             .push(class_info(self.module, self.imports, class, class_def));
     }
 
-    fn push_function_signature(&mut self, function: &str, function_def: &ast::StmtFunctionDef) {
-        self.fn_sigs.push(function_signature(
-            self.module,
-            self.imports,
-            function,
-            function_def,
-        ));
+    fn push_function_signature(
+        &mut self,
+        function: &str,
+        function_def: &ast::StmtFunctionDef,
+        types: &HashMap<String, TypeBinding>,
+    ) {
+        let mut signature = function_signature(self.module, self.imports, function, function_def);
+        if signature.return_type.is_none() {
+            signature.return_type = self.inferred_function_return(function_def, types);
+        }
+        self.fn_sigs.push(signature);
+    }
+
+    fn inferred_function_return(
+        &self,
+        function_def: &ast::StmtFunctionDef,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        let mut inferred = None;
+        for statement in &function_def.body {
+            let ast::Stmt::Return(return_stmt) = statement else {
+                continue;
+            };
+            let Some(value) = &return_stmt.value else {
+                return None;
+            };
+            let binding = self.assignment_value_binding(value, types)?;
+            if inferred
+                .as_ref()
+                .is_some_and(|existing: &TypeBinding| existing != &binding)
+            {
+                return None;
+            }
+            inferred = Some(binding);
+        }
+        inferred
     }
 
     fn push_reference(&mut self, from: &str, name: &str, range: TextRange) {

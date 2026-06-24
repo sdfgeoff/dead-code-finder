@@ -217,20 +217,28 @@ fn init_self_field(
     statement: &ast::Stmt,
     parameter_types: &[(String, TypeBinding)],
 ) -> Option<ClassFieldInfo> {
-    let ast::Stmt::Assign(assign) = statement else {
-        return None;
-    };
-    if assign.targets.len() != 1 {
-        return None;
-    }
-    let target = assign.targets.first()?;
-    let field_name = self_attribute_name(target)?;
-    let type_name = match assign.value.as_ref() {
-        ast::Expr::Name(value) => parameter_types
-            .iter()
-            .find(|(parameter, _)| parameter == value.id.as_str())
-            .map(|(_, type_name)| type_name.clone())?,
-        ast::Expr::Call(call) => type_binding_from_expr(module, imports, &call.func)?,
+    let (field_name, type_name) = match statement {
+        ast::Stmt::Assign(assign) => {
+            if assign.targets.len() != 1 {
+                return None;
+            }
+            let target = assign.targets.first()?;
+            let field_name = self_attribute_name(target)?;
+            let type_name = match assign.value.as_ref() {
+                ast::Expr::Name(value) => parameter_types
+                    .iter()
+                    .find(|(parameter, _)| parameter == value.id.as_str())
+                    .map(|(_, type_name)| type_name.clone())?,
+                ast::Expr::Call(call) => type_binding_from_expr(module, imports, &call.func)?,
+                _ => return None,
+            };
+            (field_name, type_name)
+        }
+        ast::Stmt::AnnAssign(assign) => {
+            let field_name = self_attribute_name(&assign.target)?;
+            let type_name = type_binding_from_expr(module, imports, &assign.annotation)?;
+            (field_name, type_name)
+        }
         _ => return None,
     };
     Some(ClassFieldInfo {
