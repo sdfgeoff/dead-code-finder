@@ -18,6 +18,7 @@ pub(super) fn constructed_type_for_call(
             if is_type_object(&binding.base) {
                 return binding.args.first().map(|arg| (arg.base.clone(), true));
             }
+            return None;
         }
     }
     constructed_type_from_callee(module, imports, rules, callee)

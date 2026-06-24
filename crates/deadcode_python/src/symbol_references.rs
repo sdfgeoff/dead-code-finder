@@ -26,9 +26,7 @@ impl SymbolCollector<'_> {
     ) {
         match statement {
             ast::Stmt::FunctionDef(function) => {
-                let function_owner = format!("{}.{}", self.module, function.name.as_str());
-                let types = self.function_type_bindings(function, None, types);
-                self.collect_function_references(&function_owner, function, types);
+                self.collect_local_function_references(owner, function, types);
             }
             ast::Stmt::ClassDef(_) => {}
             ast::Stmt::Import(import) => {

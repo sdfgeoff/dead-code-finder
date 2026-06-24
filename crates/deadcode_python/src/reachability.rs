@@ -185,7 +185,8 @@ fn compute_live_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<Strin
             .iter()
             .filter(|reference| reference.from == owner)
         {
-            if let Some(target) = resolve_reference(module, &reference.name, &symbol_kinds) {
+            if let Some(target) = resolve_reference(&owner, module, &reference.name, &symbol_kinds)
+            {
                 push_live(&target, &mut live, &mut queue);
                 for route_glob in &index.route_globs {
                     if route_glob.when_function_called == target {
@@ -362,6 +363,7 @@ fn owner_module(
 }
 
 fn resolve_reference(
+    owner: &str,
     module: &ModuleIndex,
     name: &str,
     symbol_kinds: &HashMap<String, SymbolKind>,
@@ -382,6 +384,23 @@ fn resolve_reference(
             } => Some(format!("{module}.{name}")),
             _ => None,
         };
+    }
+
+    let owner_local_symbol = format!("{owner}.{name}");
+    if symbol_kinds.contains_key(&owner_local_symbol) {
+        return Some(owner_local_symbol);
+    }
+
+    let mut scope = owner;
+    while let Some((parent, _)) = scope.rsplit_once('.') {
+        if parent == module.module {
+            break;
+        }
+        let parent_local_symbol = format!("{parent}.{name}");
+        if symbol_kinds.contains_key(&parent_local_symbol) {
+            return Some(parent_local_symbol);
+        }
+        scope = parent;
     }
 
     let same_module_symbol = format!("{}.{}", module.module, name);

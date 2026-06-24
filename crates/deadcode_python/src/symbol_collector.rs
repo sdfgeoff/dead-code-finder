@@ -38,6 +38,8 @@ mod symbol_iteration;
 mod symbol_json_types;
 #[path = "symbol_lambda.rs"]
 mod symbol_lambda;
+#[path = "symbol_local_functions.rs"]
+mod symbol_local_functions;
 #[path = "symbol_mapping_types.rs"]
 mod symbol_mapping_types;
 #[path = "symbol_member_refs.rs"]
@@ -323,6 +325,14 @@ impl SymbolCollector<'_> {
         function: &ast::StmtFunctionDef,
         types: &HashMap<String, TypeBinding>,
     ) {
+        let function_owner = owner
+            .strip_prefix(self.module)
+            .and_then(|suffix| {
+                suffix
+                    .strip_prefix('.')
+                    .map(|_| format!("{owner}.{}", function.name.as_str()))
+            })
+            .unwrap_or_else(|| format!("{}.{}", self.module, function.name.as_str()));
         for decorator in &function.decorator_list {
             if decorator_registers_function(
                 self.module,
@@ -343,6 +353,7 @@ impl SymbolCollector<'_> {
                 );
             }
             self.collect_expr_references(owner, &decorator.expression, types);
+            self.collect_expr_references(&function_owner, &decorator.expression, types);
         }
     }
 

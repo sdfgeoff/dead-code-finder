@@ -15,27 +15,27 @@ pub(super) fn decorator_registers_function(
     expr: &ast::Expr,
     types: &HashMap<String, TypeBinding>,
 ) -> bool {
-    let ast::Expr::Call(call) = expr else {
-        return false;
-    };
     rules.decorators.iter().any(|rule| {
         rule.effect == "registerDecoratedFunction"
-            && decorator_matches(rule, call, module, imports, types)
+            && decorator_matches(rule, expr, module, imports, types)
     })
 }
 
 fn decorator_matches(
     rule: &crate::config::DecoratorRule,
-    call: &ast::ExprCall,
+    expr: &ast::Expr,
     module: &str,
     imports: &[ResolvedImport],
     types: &HashMap<String, TypeBinding>,
 ) -> bool {
+    let callee = match expr {
+        ast::Expr::Call(call) => call.func.as_ref(),
+        expr => expr,
+    };
     if let Some(function) = &rule.function {
-        return callable_identity(module, imports, &call.func).as_deref()
-            == Some(function.as_str());
+        return callable_identity(module, imports, callee).as_deref() == Some(function.as_str());
     }
-    let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
+    let ast::Expr::Attribute(attribute) = callee else {
         return false;
     };
     let ast::Expr::Name(receiver) = attribute.value.as_ref() else {

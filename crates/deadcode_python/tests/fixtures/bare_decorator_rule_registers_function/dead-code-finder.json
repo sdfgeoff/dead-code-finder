@@ -1,0 +1,12 @@
+{
+  "roots": [{ "path": "pkg", "module": "pkg" }],
+  "entrypoints": ["pkg/main.py"],
+  "rules": {
+    "decorators": [
+      {
+        "function": "pkg.background.make_background_task",
+        "effect": "registerDecoratedFunction"
+      }
+    ]
+  }
+}

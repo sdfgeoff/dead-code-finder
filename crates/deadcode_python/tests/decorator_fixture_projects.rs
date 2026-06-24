@@ -12,6 +12,23 @@ fn callable_decorator_rule_registers_function() {
     assert!(symbols.contains(&"pkg.main.Model.dead".to_string()));
 }
 
+#[test]
+fn bare_decorator_rule_registers_function() {
+    let report = analyze_fixture("bare_decorator_rule_registers_function");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.run_task".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Resource.__enter__".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Resource.__exit__".to_string()));
+    assert!(!symbols.contains(&"pkg.background.WrapperResource.__enter__".to_string()));
+    assert!(!symbols.contains(&"pkg.background.WrapperResource.__exit__".to_string()));
+    assert!(symbols.contains(&"pkg.main.DeadResource.__enter__".to_string()));
+    assert!(symbols.contains(&"pkg.main.DeadResource.__exit__".to_string()));
+    assert!(symbols.contains(&"pkg.background.DeadWrapperResource.__enter__".to_string()));
+    assert!(symbols.contains(&"pkg.background.DeadWrapperResource.__exit__".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))
