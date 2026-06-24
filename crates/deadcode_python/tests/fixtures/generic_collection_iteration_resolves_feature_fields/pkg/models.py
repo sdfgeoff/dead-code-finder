@@ -4,6 +4,7 @@ from typing import Generic, Sequence, TypeVar
 IdType = TypeVar("IdType")
 GeometryType = TypeVar("GeometryType")
 PropertyType = TypeVar("PropertyType")
+MetadataType = TypeVar("MetadataType")
 
 
 class Geometry:
@@ -23,5 +24,12 @@ class Feature(Generic[IdType, GeometryType, PropertyType]):
     unused: PropertyType
 
 
-class FeatureCollection(Generic[IdType, GeometryType, PropertyType]):
+class BaseModel:
+    pass
+
+
+class FeatureCollection(
+    BaseModel, Generic[IdType, GeometryType, PropertyType, MetadataType]
+):
     features: Sequence[Feature[IdType, GeometryType, PropertyType]]
+    metadata: MetadataType

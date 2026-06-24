@@ -40,7 +40,9 @@ pub(super) fn collect_import_from(
     reexports: &ReexportMap,
     import_from: &ast::StmtImportFrom,
 ) {
-    let Some(base_module) = resolve_import_from_base(module, import_from) else {
+    let Some(base_module) =
+        resolve_import_from_base(module, import_from, is_package_init_file(file))
+    else {
         return;
     };
     let base_is_external = !known_modules.contains(&base_module);
@@ -81,6 +83,7 @@ pub(super) fn collect_import_from(
 pub(super) fn resolve_import_from_base(
     current_module: &str,
     import_from: &ast::StmtImportFrom,
+    is_package_init: bool,
 ) -> Option<String> {
     let imported_module = import_from.module.as_ref().map(ast::Identifier::as_str);
     if import_from.level == 0 {
@@ -88,7 +91,9 @@ pub(super) fn resolve_import_from_base(
     }
 
     let mut parts = current_module.split('.').collect::<Vec<_>>();
-    parts.pop();
+    if !is_package_init {
+        parts.pop();
+    }
     let ancestor_count = import_from.level.saturating_sub(1) as usize;
     if ancestor_count > parts.len() {
         return None;
@@ -98,6 +103,10 @@ pub(super) fn resolve_import_from_base(
         parts.extend(imported_module.split('.'));
     }
     Some(parts.join("."))
+}
+
+fn is_package_init_file(file: &str) -> bool {
+    file.ends_with("/__init__.py") || file.ends_with("\\__init__.py")
 }
 
 fn push_import(
