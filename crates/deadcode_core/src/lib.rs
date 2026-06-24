@@ -44,6 +44,7 @@ pub struct Finding {
     pub symbol: String,
     pub symbol_kind: SymbolKind,
     pub span: SourceSpan,
+    pub reachable_from: Vec<String>,
 }
 
 impl Finding {
@@ -54,13 +55,34 @@ impl Finding {
         span: SourceSpan,
     ) -> Self {
         let symbol = symbol.into();
-        Self {
+        let mut finding = Self {
             code: code.into(),
             message: format!("unused symbol {symbol}"),
             symbol,
             symbol_kind,
             span,
-        }
+            reachable_from: Vec::new(),
+        };
+        finding.refresh_message();
+        finding
+    }
+
+    pub fn with_reachable_from(mut self, root_sets: Vec<String>) -> Self {
+        self.reachable_from = root_sets;
+        self.refresh_message();
+        self
+    }
+
+    fn refresh_message(&mut self) {
+        self.message = if self.reachable_from.is_empty() {
+            format!("unused symbol {}", self.symbol)
+        } else {
+            format!(
+                "unused symbol {} (reachable from {} only)",
+                self.symbol,
+                self.reachable_from.join(", ")
+            )
+        };
     }
 }
 
@@ -140,5 +162,6 @@ mod tests {
 
         assert!(!report.is_clean());
         assert_eq!(report.summary().findings, 1);
+        assert!(report.findings[0].reachable_from.is_empty());
     }
 }

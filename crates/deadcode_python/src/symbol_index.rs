@@ -16,6 +16,7 @@ use self::symbol_collector::SymbolCollector;
 pub struct SymbolIndex {
     pub modules: Vec<ModuleIndex>,
     pub parse_diagnostics: Vec<ParseDiagnostic>,
+    pub include_tests: bool,
     known_modules: HashSet<String>,
 }
 
@@ -33,6 +34,8 @@ pub struct ModuleIndex {
     pub unresolved_receivers: Vec<UnresolvedReceiver>,
     pub unsupported_expansions: Vec<UnsupportedExpansion>,
     pub is_entrypoint: bool,
+    pub is_test: bool,
+    pub test_roots: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,6 +198,7 @@ impl std::error::Error for SymbolIndexError {}
 
 pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, SymbolIndexError> {
     let mut index = SymbolIndex::default();
+    index.include_tests = config.include_tests;
 
     for root in &config.roots {
         let mut files = Vec::new();
@@ -220,6 +224,7 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
                 &index.known_modules,
                 &config.rules,
                 is_configured_entrypoint(config, &file),
+                is_test_file(config, &file),
             )?;
             index
                 .parse_diagnostics
@@ -282,6 +287,7 @@ fn index_module(
     known_modules: &HashSet<String>,
     rules: &RuleConfig,
     is_configured_entrypoint: bool,
+    is_test: bool,
 ) -> Result<IndexedModuleResult, SymbolIndexError> {
     let source = fs::read_to_string(file).map_err(|source| SymbolIndexError::ReadFile {
         path: file.to_path_buf(),
@@ -338,6 +344,18 @@ fn index_module(
         }
     }
 
+    let test_roots = if is_test {
+        symbols
+            .iter()
+            .filter(|symbol| {
+                symbol.kind == SymbolKind::Function && symbol.name.starts_with("test_")
+            })
+            .map(|symbol| symbol.qualified_name.clone())
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     Ok(IndexedModuleResult {
         module: ModuleIndex {
             module: module.to_string(),
@@ -352,6 +370,8 @@ fn index_module(
             unresolved_receivers,
             unsupported_expansions,
             is_entrypoint: is_configured_entrypoint || has_main_entrypoint,
+            is_test,
+            test_roots,
         },
         parse_diagnostics,
     })
@@ -374,6 +394,27 @@ fn is_configured_entrypoint(config: &LoadedProjectConfig, file: &Path) -> bool {
         let configured = config.project_dir.join(entrypoint);
         configured == file
     })
+}
+
+fn is_test_file(config: &LoadedProjectConfig, file: &Path) -> bool {
+    let relative = file.strip_prefix(&config.project_dir).unwrap_or(file);
+    let relative_text = relative.to_string_lossy();
+    let filename = file
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+    config
+        .test_patterns
+        .iter()
+        .any(|pattern| match pattern.as_str() {
+            "tests/**" => relative
+                .components()
+                .any(|part| part.as_os_str() == "tests"),
+            "test_*.py" => filename.starts_with("test_") && filename.ends_with(".py"),
+            "*_test.py" => filename.ends_with("_test.py"),
+            "conftest.py" => filename == "conftest.py",
+            pattern => relative_text == pattern,
+        })
 }
 
 fn strip_py_extension(part: &str) -> String {

@@ -5,19 +5,42 @@ use deadcode_core::{Diagnostic, Finding, Severity, SymbolKind};
 use crate::symbol_index::{ClassInfo, FunctionSignature, ImportTarget, ModuleIndex, SymbolIndex};
 
 pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
-    let live = compute_live_symbols(index);
+    let live = compute_live_symbols(index, RootSet::Main);
+    let test_live = index
+        .include_tests
+        .then(|| compute_live_symbols(index, RootSet::Test))
+        .unwrap_or_default();
     let mut findings = Vec::new();
     for module in &index.modules {
         for symbol in &module.symbols {
-            if symbol.kind == SymbolKind::Module || live.contains(&symbol.qualified_name) {
+            if symbol.kind == SymbolKind::Module {
                 continue;
             }
-            findings.push(Finding::unused(
-                code_for_kind(&symbol.kind),
-                symbol.qualified_name.clone(),
-                symbol.kind.clone(),
-                symbol.span.clone(),
-            ));
+            if module.is_test {
+                if !index.include_tests || test_live.contains(&symbol.qualified_name) {
+                    continue;
+                }
+                findings.push(Finding::unused(
+                    code_for_kind(&symbol.kind),
+                    symbol.qualified_name.clone(),
+                    symbol.kind.clone(),
+                    symbol.span.clone(),
+                ));
+            } else if !live.contains(&symbol.qualified_name) {
+                let reachable_from = test_live
+                    .contains(&symbol.qualified_name)
+                    .then(|| vec!["test".to_string()])
+                    .unwrap_or_default();
+                findings.push(
+                    Finding::unused(
+                        code_for_kind(&symbol.kind),
+                        symbol.qualified_name.clone(),
+                        symbol.kind.clone(),
+                        symbol.span.clone(),
+                    )
+                    .with_reachable_from(reachable_from),
+                );
+            }
         }
     }
     findings.sort_by(|left, right| {
@@ -31,7 +54,7 @@ pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
 }
 
 pub fn unresolved_receiver_diagnostics(index: &SymbolIndex) -> Vec<Diagnostic> {
-    let live = compute_live_symbols(index);
+    let live = compute_live_symbols(index, RootSet::Main);
     let mut diagnostics = Vec::new();
     for module in &index.modules {
         for unresolved in &module.unresolved_receivers {
@@ -60,7 +83,7 @@ pub fn unresolved_receiver_diagnostics(index: &SymbolIndex) -> Vec<Diagnostic> {
 }
 
 pub fn unsupported_expansion_diagnostics(index: &SymbolIndex) -> Vec<Diagnostic> {
-    let live = compute_live_symbols(index);
+    let live = compute_live_symbols(index, RootSet::Main);
     let mut diagnostics = Vec::new();
     for module in &index.modules {
         for expansion in &module.unsupported_expansions {
@@ -88,14 +111,20 @@ pub fn unsupported_expansion_diagnostics(index: &SymbolIndex) -> Vec<Diagnostic>
     diagnostics
 }
 
-fn compute_live_symbols(index: &SymbolIndex) -> HashSet<String> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RootSet {
+    Main,
+    Test,
+}
+
+fn compute_live_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<String> {
     let symbol_modules = symbol_module_map(index);
     let symbol_kinds = symbol_kind_map(index);
     let module_map = module_map(index);
     let class_map = class_map(index);
     let signature_map = function_signature_map(index);
     let mut concrete_flows: HashMap<(String, String), HashSet<String>> = HashMap::new();
-    let mut live = root_modules(index);
+    let mut live = root_symbols(index, root_set);
     let mut queue = live.iter().cloned().collect::<VecDeque<_>>();
 
     while let Some(owner) = queue.pop_front() {
@@ -169,13 +198,20 @@ fn compute_live_symbols(index: &SymbolIndex) -> HashSet<String> {
     live
 }
 
-fn root_modules(index: &SymbolIndex) -> HashSet<String> {
-    index
-        .modules
-        .iter()
-        .filter(|module| module.is_entrypoint)
-        .map(|module| module.module.clone())
-        .collect()
+fn root_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<String> {
+    match root_set {
+        RootSet::Main => index
+            .modules
+            .iter()
+            .filter(|module| module.is_entrypoint && !module.is_test)
+            .map(|module| module.module.clone())
+            .collect(),
+        RootSet::Test => index
+            .modules
+            .iter()
+            .flat_map(|module| module.test_roots.iter().cloned())
+            .collect(),
+    }
 }
 
 fn module_map(index: &SymbolIndex) -> HashMap<&str, &ModuleIndex> {

@@ -203,6 +203,58 @@ fn generated_service_graph_is_deterministic_and_debuggable() {
     assert!(symbols.contains(&"pkg.generated.node_5".to_string()));
 }
 
+#[test]
+fn test_usage_does_not_keep_production_symbols_alive() {
+    let project = FixtureProject::new("test_usage_does_not_keep_production_symbols_alive");
+    project.write("pkg/service.py", "def helper():\n    pass\n");
+    project.write("pkg/main.py", "def entry():\n    pass\n\nentry()\n");
+    project.write(
+        "pkg/tests/test_service.py",
+        "from pkg.service import helper\n\ndef test_helper():\n    helper()\n",
+    );
+    project.write(
+        "dead-code-finder.json",
+        r#"{
+            "roots": [{"path": "pkg", "module": "pkg"}],
+            "entrypoints": ["pkg/main.py"],
+            "includeTests": true
+        }"#,
+    );
+
+    let report = project.analyze();
+    let helper = report
+        .findings
+        .iter()
+        .find(|finding| finding.symbol == "pkg.service.helper")
+        .unwrap();
+
+    assert_eq!(helper.reachable_from, vec!["test".to_string()]);
+}
+
+#[test]
+fn include_tests_reports_dead_helpers_inside_test_files() {
+    let project = FixtureProject::new("include_tests_reports_dead_helpers_inside_test_files");
+    project.write("pkg/main.py", "def entry():\n    pass\n\nentry()\n");
+    project.write(
+        "pkg/tests/test_service.py",
+        "def test_live():\n    pass\n\ndef dead_helper():\n    pass\n",
+    );
+    project.write(
+        "dead-code-finder.json",
+        r#"{
+            "roots": [{"path": "pkg", "module": "pkg"}],
+            "entrypoints": ["pkg/main.py"],
+            "includeTests": true
+        }"#,
+    );
+
+    let report = project.analyze();
+    let symbols = finding_symbols(&report);
+
+    assert!(!symbols.contains(&"pkg.tests.test_service.test_live".to_string()));
+    assert!(symbols.contains(&"pkg.tests.test_service.dead_helper".to_string()));
+}
+
 struct FixtureProject {
     root: PathBuf,
 }
