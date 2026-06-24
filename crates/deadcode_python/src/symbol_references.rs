@@ -4,7 +4,9 @@ use ruff_python_ast as ast;
 use ruff_text_size::Ranged;
 
 use super::symbol_expr::target_name;
-use super::symbol_generics::{expr_type, field_read_type, iterable_item_type};
+use super::symbol_generics::{
+    expr_type, field_read_type, iterable_item_type, member_reference_target_bases,
+};
 use super::symbol_members::push_member_reference;
 use super::symbol_rules::{
     callable_argument_references, callable_identity, constructed_type_from_callee,
@@ -26,7 +28,7 @@ impl SymbolCollector<'_> {
         match statement {
             ast::Stmt::FunctionDef(function) => {
                 let function_owner = format!("{}.{}", self.module, function.name.as_str());
-                let types = self.function_type_bindings(function, None);
+                let types = self.function_type_bindings(function, None, types);
                 self.collect_function_references(&function_owner, function, types);
             }
             ast::Stmt::ClassDef(_) => {}
@@ -47,6 +49,9 @@ impl SymbolCollector<'_> {
                         .or_else(|| self.local_call_return_binding(&assign.value, types))
                         .or_else(|| self.fluent_self_call_binding(&assign.value, types))
                         .or_else(|| self.external_call_result_binding(&assign.value, types))
+                        .or_else(|| {
+                            type_binding_from_expr(self.module, self.imports, &assign.value)
+                        })
                 {
                     self.mark_external_if_outside_project(&mut type_name);
                     for target in &assign.targets {
@@ -72,6 +77,10 @@ impl SymbolCollector<'_> {
                 if let Some(value) = &assign.value {
                     self.collect_expr_references(owner, value, types);
                 }
+            }
+            ast::Stmt::AugAssign(assign) => {
+                self.collect_assignment_target(owner, &assign.target, types);
+                self.collect_expr_references(owner, &assign.value, types);
             }
             ast::Stmt::If(if_stmt) => {
                 self.collect_expr_references(owner, &if_stmt.test, types);
@@ -362,15 +371,17 @@ impl SymbolCollector<'_> {
             if receiver_type.external {
                 return;
             }
-            push_member_reference(
-                self.member_refs,
-                self.locator,
-                self.file,
-                owner,
-                format!("{}.{}", receiver_type.base, attribute.attr.as_str()),
-                access,
-                attribute.range,
-            );
+            for target_base in member_reference_target_bases(&receiver_type) {
+                push_member_reference(
+                    self.member_refs,
+                    self.locator,
+                    self.file,
+                    owner,
+                    format!("{}.{}", target_base, attribute.attr.as_str()),
+                    access.clone(),
+                    attribute.range,
+                );
+            }
         } else {
             let ast::Expr::Name(receiver) = attribute.value.as_ref() else {
                 return;

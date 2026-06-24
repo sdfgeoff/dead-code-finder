@@ -8,6 +8,17 @@ pub(super) fn type_binding_from_expr(
     expr: &ast::Expr,
 ) -> Option<TypeBinding> {
     match expr {
+        ast::Expr::BinOp(bin_op) if bin_op.op == ast::Operator::BitOr => Some(TypeBinding {
+            base: "typing.Union".to_string(),
+            args: [
+                type_binding_from_expr(module, imports, &bin_op.left),
+                type_binding_from_expr(module, imports, &bin_op.right),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
+            external: false,
+        }),
         ast::Expr::Subscript(subscript) => {
             let base = type_binding_from_expr(module, imports, &subscript.value)?;
             Some(TypeBinding {

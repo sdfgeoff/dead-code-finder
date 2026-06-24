@@ -88,7 +88,7 @@ impl SymbolCollector<'_> {
                 self.collect_function_annotation_references(&function_owner, function);
                 self.collect_decorator_rules(function, module_types);
                 let mut types = module_types.clone();
-                types.extend(self.function_type_bindings(function, None));
+                types.extend(self.function_type_bindings(function, None, module_types));
                 self.collect_function_references(&function_owner, function, types);
             }
             ast::Stmt::ClassDef(class_def) => {
@@ -162,7 +162,11 @@ impl SymbolCollector<'_> {
                         &function.body,
                     );
                     let mut types = module_types.clone();
-                    types.extend(self.function_type_bindings(function, Some(class_name)));
+                    types.extend(self.function_type_bindings(
+                        function,
+                        Some(class_name),
+                        module_types,
+                    ));
                     self.collect_function_references(&method_owner, function, types);
                 }
                 ast::Stmt::AnnAssign(assign) => {
@@ -284,6 +288,7 @@ impl SymbolCollector<'_> {
         &self,
         function: &ast::StmtFunctionDef,
         class_name: Option<&str>,
+        module_types: &HashMap<String, TypeBinding>,
     ) -> HashMap<String, TypeBinding> {
         let mut types = HashMap::new();
         if let Some(class_name) = class_name {
@@ -299,13 +304,30 @@ impl SymbolCollector<'_> {
         for parameter in function.parameters.iter() {
             let parameter = parameter.as_parameter();
             if let Some(annotation) = parameter.annotation() {
-                if let Some(type_name) =
-                    type_binding_from_expr(self.module, self.imports, annotation)
-                {
+                if let Some(type_name) = type_binding_from_annotation(
+                    self.module,
+                    self.imports,
+                    annotation,
+                    module_types,
+                ) {
                     types.insert(parameter.name.as_str().to_string(), type_name);
                 }
             }
         }
         types
     }
+}
+
+fn type_binding_from_annotation(
+    module: &str,
+    imports: &[ResolvedImport],
+    annotation: &ast::Expr,
+    module_types: &HashMap<String, TypeBinding>,
+) -> Option<TypeBinding> {
+    if let ast::Expr::Name(name) = annotation {
+        if let Some(binding) = module_types.get(name.id.as_str()) {
+            return Some(binding.clone());
+        }
+    }
+    type_binding_from_expr(module, imports, annotation)
 }

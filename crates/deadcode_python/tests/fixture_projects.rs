@@ -154,6 +154,19 @@ fn generic_method_typevar_return_from_type_argument() {
 }
 
 #[test]
+fn imported_generic_type_alias_resolves_member_fields() {
+    let report = analyze_fixture("imported_generic_type_alias_resolves_member_fields");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.geo.FeatureCollection.features".to_string()));
+    assert!(!symbols.contains(&"pkg.geo.Feature.properties".to_string()));
+    assert!(!symbols.contains(&"pkg.geo.Feature.geometry".to_string()));
+    assert!(!symbols.contains(&"pkg.geo.BoundaryProperties.title_area".to_string()));
+    assert!(symbols.contains(&"pkg.geo.BoundaryProperties.unused".to_string()));
+}
+
+#[test]
 fn scripts_inheritance_generics_and_unresolved_receivers_are_reported() {
     let report = analyze_fixture("scripts_inheritance_generics_and_unresolved_receivers");
     let symbols = finding_symbols(&report);
