@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use deadcode_core::{Diagnostic, Finding, Severity, SymbolKind};
 
-use crate::symbol_index::{ImportTarget, ModuleIndex, SymbolIndex};
+use crate::symbol_index::{ClassInfo, FunctionSignature, ImportTarget, ModuleIndex, SymbolIndex};
 
 pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
     let live = compute_live_symbols(index);
@@ -92,6 +92,9 @@ fn compute_live_symbols(index: &SymbolIndex) -> HashSet<String> {
     let symbol_modules = symbol_module_map(index);
     let symbol_kinds = symbol_kind_map(index);
     let module_map = module_map(index);
+    let class_map = class_map(index);
+    let signature_map = function_signature_map(index);
+    let mut concrete_flows: HashMap<(String, String), HashSet<String>> = HashMap::new();
     let mut live = root_modules(index);
     let mut queue = live.iter().cloned().collect::<VecDeque<_>>();
 
@@ -111,6 +114,30 @@ fn compute_live_symbols(index: &SymbolIndex) -> HashSet<String> {
             continue;
         };
 
+        for call_argument in module
+            .call_argument_types
+            .iter()
+            .filter(|call_argument| call_argument.from == owner)
+        {
+            let Some(signature) = signature_map.get(call_argument.callee.as_str()) else {
+                continue;
+            };
+            let Some(Some(base_type)) = signature.parameter_types.get(call_argument.position)
+            else {
+                continue;
+            };
+            if !is_subclass_or_same(&call_argument.concrete_type, base_type, &class_map) {
+                continue;
+            }
+            let flow_key = (call_argument.callee.clone(), base_type.clone());
+            let concrete_types = concrete_flows.entry(flow_key).or_default();
+            if concrete_types.insert(call_argument.concrete_type.clone())
+                && live.contains(&call_argument.callee)
+            {
+                queue.push_back(call_argument.callee.clone());
+            }
+        }
+
         for reference in module
             .references
             .iter()
@@ -126,12 +153,19 @@ fn compute_live_symbols(index: &SymbolIndex) -> HashSet<String> {
             .iter()
             .filter(|reference| reference.from == owner)
         {
-            if symbol_kinds.contains_key(&reference.target) {
-                push_live(&reference.target, &mut live, &mut queue);
+            for target in resolve_member_targets(
+                &owner,
+                &reference.target,
+                &symbol_kinds,
+                &class_map,
+                &concrete_flows,
+            ) {
+                push_live(&target, &mut live, &mut queue);
             }
         }
     }
 
+    mark_symbol_owners_live(&mut live, &symbol_kinds);
     live
 }
 
@@ -167,6 +201,26 @@ fn symbol_kind_map(index: &SymbolIndex) -> HashMap<String, SymbolKind> {
     for module in &index.modules {
         for symbol in &module.symbols {
             map.insert(symbol.qualified_name.clone(), symbol.kind.clone());
+        }
+    }
+    map
+}
+
+fn class_map(index: &SymbolIndex) -> HashMap<String, ClassInfo> {
+    let mut map = HashMap::new();
+    for module in &index.modules {
+        for class in &module.classes {
+            map.insert(class.class.clone(), class.clone());
+        }
+    }
+    map
+}
+
+fn function_signature_map(index: &SymbolIndex) -> HashMap<String, FunctionSignature> {
+    let mut map = HashMap::new();
+    for module in &index.modules {
+        for signature in &module.function_signatures {
+            map.insert(signature.function.clone(), signature.clone());
         }
     }
     map
@@ -237,6 +291,122 @@ fn push_live(target: &str, live: &mut HashSet<String>, queue: &mut VecDeque<Stri
     }
 }
 
+fn resolve_member_targets(
+    owner: &str,
+    target: &str,
+    symbol_kinds: &HashMap<String, SymbolKind>,
+    class_map: &HashMap<String, ClassInfo>,
+    concrete_flows: &HashMap<(String, String), HashSet<String>>,
+) -> Vec<String> {
+    let Some((receiver_type, member)) = target.rsplit_once('.') else {
+        return Vec::new();
+    };
+    let mut targets = Vec::new();
+    if let Some(resolved) = lookup_member(receiver_type, member, symbol_kinds, class_map) {
+        targets.push(resolved);
+    }
+    if let Some(concrete_types) =
+        concrete_flows.get(&(owner.to_string(), receiver_type.to_string()))
+    {
+        for concrete_type in concrete_types {
+            if let Some(resolved) = lookup_member(concrete_type, member, symbol_kinds, class_map) {
+                if !targets.contains(&resolved) {
+                    targets.push(resolved);
+                }
+            }
+        }
+    }
+    targets
+}
+
+fn lookup_member(
+    class_name: &str,
+    member: &str,
+    symbol_kinds: &HashMap<String, SymbolKind>,
+    class_map: &HashMap<String, ClassInfo>,
+) -> Option<String> {
+    lookup_member_inner(
+        class_name,
+        member,
+        symbol_kinds,
+        class_map,
+        &mut HashSet::new(),
+    )
+}
+
+fn lookup_member_inner(
+    class_name: &str,
+    member: &str,
+    symbol_kinds: &HashMap<String, SymbolKind>,
+    class_map: &HashMap<String, ClassInfo>,
+    visited: &mut HashSet<String>,
+) -> Option<String> {
+    if !visited.insert(class_name.to_string()) {
+        return None;
+    }
+    let direct = format!("{class_name}.{member}");
+    if symbol_kinds.contains_key(&direct) {
+        return Some(direct);
+    }
+    let class_info = class_map.get(class_name)?;
+    for base in &class_info.bases {
+        if let Some(target) = lookup_member_inner(base, member, symbol_kinds, class_map, visited) {
+            return Some(target);
+        }
+    }
+    None
+}
+
+fn is_subclass_or_same(
+    concrete_type: &str,
+    base_type: &str,
+    class_map: &HashMap<String, ClassInfo>,
+) -> bool {
+    if concrete_type == base_type {
+        return true;
+    }
+    is_subclass_inner(concrete_type, base_type, class_map, &mut HashSet::new())
+}
+
+fn is_subclass_inner(
+    concrete_type: &str,
+    base_type: &str,
+    class_map: &HashMap<String, ClassInfo>,
+    visited: &mut HashSet<String>,
+) -> bool {
+    if !visited.insert(concrete_type.to_string()) {
+        return false;
+    }
+    let Some(class_info) = class_map.get(concrete_type) else {
+        return false;
+    };
+    class_info
+        .bases
+        .iter()
+        .any(|base| base == base_type || is_subclass_inner(base, base_type, class_map, visited))
+}
+
+fn mark_symbol_owners_live(live: &mut HashSet<String>, symbol_kinds: &HashMap<String, SymbolKind>) {
+    let owners = live
+        .iter()
+        .filter_map(|symbol| {
+            let kind = symbol_kinds.get(symbol)?;
+            if !matches!(
+                kind,
+                SymbolKind::Method | SymbolKind::Attribute | SymbolKind::Field
+            ) {
+                return None;
+            }
+            let (owner, _) = symbol.rsplit_once('.')?;
+            symbol_kinds
+                .get(owner)
+                .is_some_and(|kind| *kind == SymbolKind::Class)
+                .then(|| owner.to_string())
+        })
+        .collect::<Vec<_>>();
+    live.extend(owners);
+}
+
 fn code_for_kind(kind: &SymbolKind) -> &'static str {
     match kind {
         SymbolKind::Function => "DCF001",
@@ -248,395 +418,5 @@ fn code_for_kind(kind: &SymbolKind) -> &'static str {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::fs;
-    use std::path::{Path, PathBuf};
-
-    use crate::config::{LoadedProjectConfig, ResolvedRoot};
-    use crate::symbol_index::index_project;
-
-    use super::*;
-
-    #[test]
-    fn reports_dead_islands_not_just_unreferenced_functions() {
-        let workspace = test_workspace("reports_dead_islands_not_just_unreferenced_functions");
-        let package = workspace.join("pkg");
-        fs::create_dir_all(&package).unwrap();
-        fs::write(
-            package.join("main.py"),
-            r#"
-def live():
-    helper()
-
-def helper():
-    pass
-
-def old_view():
-    old_helper()
-
-def old_helper():
-    pass
-
-live()
-"#,
-        )
-        .unwrap();
-        let config = loaded_config(
-            &workspace,
-            vec![root(&package, "pkg")],
-            vec!["pkg/main.py".to_string()],
-        );
-
-        let index = index_project(&config).unwrap();
-        let findings = find_unused_symbols(&index);
-        let symbols = finding_symbols(&findings);
-
-        assert!(!symbols.contains(&"pkg.main.live".to_string()));
-        assert!(!symbols.contains(&"pkg.main.helper".to_string()));
-        assert!(symbols.contains(&"pkg.main.old_view".to_string()));
-        assert!(symbols.contains(&"pkg.main.old_helper".to_string()));
-    }
-
-    #[test]
-    fn follows_used_import_bindings_to_imported_symbols() {
-        let workspace = test_workspace("follows_used_import_bindings_to_imported_symbols");
-        let package = workspace.join("pkg");
-        fs::create_dir_all(&package).unwrap();
-        fs::write(
-            package.join("main.py"),
-            "from pkg.helpers import live\n\nlive()\n",
-        )
-        .unwrap();
-        fs::write(
-            package.join("helpers.py"),
-            r#"
-def live():
-    pass
-
-def dead():
-    pass
-"#,
-        )
-        .unwrap();
-        let config = loaded_config(
-            &workspace,
-            vec![root(&package, "pkg")],
-            vec!["pkg/main.py".to_string()],
-        );
-
-        let index = index_project(&config).unwrap();
-        let findings = find_unused_symbols(&index);
-        let symbols = finding_symbols(&findings);
-
-        assert!(!symbols.contains(&"pkg.helpers.live".to_string()));
-        assert!(symbols.contains(&"pkg.helpers.dead".to_string()));
-    }
-
-    #[test]
-    fn treats_main_guard_as_entrypoint() {
-        let workspace = test_workspace("treats_main_guard_as_entrypoint");
-        let package = workspace.join("pkg");
-        fs::create_dir_all(&package).unwrap();
-        fs::write(
-            package.join("script.py"),
-            r#"
-def live():
-    pass
-
-def dead():
-    pass
-
-if __name__ == "__main__":
-    live()
-"#,
-        )
-        .unwrap();
-        let config = loaded_config(&workspace, vec![root(&package, "pkg")], Vec::new());
-
-        let index = index_project(&config).unwrap();
-        let findings = find_unused_symbols(&index);
-        let symbols = finding_symbols(&findings);
-
-        assert!(!symbols.contains(&"pkg.script.live".to_string()));
-        assert!(symbols.contains(&"pkg.script.dead".to_string()));
-    }
-
-    #[test]
-    fn resolves_method_call_from_constructor_assignment_without_name_matching() {
-        let workspace = test_workspace(
-            "resolves_method_call_from_constructor_assignment_without_name_matching",
-        );
-        let package = workspace.join("pkg");
-        fs::create_dir_all(&package).unwrap();
-        fs::write(
-            package.join("main.py"),
-            r#"
-class ExampleEntity:
-    def save(self):
-        pass
-
-class Other:
-    def save(self):
-        pass
-
-def run():
-    entity = ExampleEntity()
-    entity.save()
-
-run()
-"#,
-        )
-        .unwrap();
-        let config = loaded_config(
-            &workspace,
-            vec![root(&package, "pkg")],
-            vec!["pkg/main.py".to_string()],
-        );
-
-        let index = index_project(&config).unwrap();
-        let findings = find_unused_symbols(&index);
-        let symbols = finding_symbols(&findings);
-
-        assert!(!symbols.contains(&"pkg.main.ExampleEntity.save".to_string()));
-        assert!(symbols.contains(&"pkg.main.Other.save".to_string()));
-    }
-
-    #[test]
-    fn resolves_method_call_from_parameter_annotation() {
-        let workspace = test_workspace("resolves_method_call_from_parameter_annotation");
-        let package = workspace.join("pkg");
-        fs::create_dir_all(&package).unwrap();
-        fs::write(
-            package.join("main.py"),
-            r#"
-class ExampleEntity:
-    def save(self):
-        pass
-
-def process(entity: ExampleEntity):
-    entity.save()
-
-process(ExampleEntity())
-"#,
-        )
-        .unwrap();
-        let config = loaded_config(
-            &workspace,
-            vec![root(&package, "pkg")],
-            vec!["pkg/main.py".to_string()],
-        );
-
-        let index = index_project(&config).unwrap();
-        let findings = find_unused_symbols(&index);
-        let symbols = finding_symbols(&findings);
-
-        assert!(!symbols.contains(&"pkg.main.ExampleEntity.save".to_string()));
-    }
-
-    #[test]
-    fn constructor_keywords_mark_only_matching_owner_field_used() {
-        let workspace = test_workspace("constructor_keywords_mark_only_matching_owner_field_used");
-        let package = workspace.join("pkg");
-        fs::create_dir_all(&package).unwrap();
-        fs::write(
-            package.join("main.py"),
-            r#"
-class ExampleEntity:
-    name: str
-
-class Other:
-    name: str
-
-def run():
-    ExampleEntity(name="A")
-
-run()
-"#,
-        )
-        .unwrap();
-        let config = loaded_config(
-            &workspace,
-            vec![root(&package, "pkg")],
-            vec!["pkg/main.py".to_string()],
-        );
-
-        let index = index_project(&config).unwrap();
-        let findings = find_unused_symbols(&index);
-        let symbols = finding_symbols(&findings);
-
-        assert!(!symbols.contains(&"pkg.main.ExampleEntity.name".to_string()));
-        assert!(symbols.contains(&"pkg.main.Other.name".to_string()));
-    }
-
-    #[test]
-    fn writes_mark_only_resolved_receiver_field_used() {
-        let workspace = test_workspace("writes_mark_only_resolved_receiver_field_used");
-        let package = workspace.join("pkg");
-        fs::create_dir_all(&package).unwrap();
-        fs::write(
-            package.join("main.py"),
-            r#"
-class ExampleEntity:
-    name: str
-
-class Other:
-    name: str
-
-def run(entity: ExampleEntity, other: Other):
-    entity.name = "A"
-
-run(ExampleEntity(), Other())
-"#,
-        )
-        .unwrap();
-        let config = loaded_config(
-            &workspace,
-            vec![root(&package, "pkg")],
-            vec!["pkg/main.py".to_string()],
-        );
-
-        let index = index_project(&config).unwrap();
-        let findings = find_unused_symbols(&index);
-        let symbols = finding_symbols(&findings);
-
-        assert!(!symbols.contains(&"pkg.main.ExampleEntity.name".to_string()));
-        assert!(symbols.contains(&"pkg.main.Other.name".to_string()));
-    }
-
-    #[test]
-    fn unsupported_constructor_expansion_warns_without_field_expansion() {
-        let workspace =
-            test_workspace("unsupported_constructor_expansion_warns_without_field_expansion");
-        let package = workspace.join("pkg");
-        fs::create_dir_all(&package).unwrap();
-        fs::write(
-            package.join("main.py"),
-            r#"
-class ExampleEntity:
-    name: str
-
-def run(payload):
-    ExampleEntity(**payload)
-
-run({})
-"#,
-        )
-        .unwrap();
-        let config = loaded_config(
-            &workspace,
-            vec![root(&package, "pkg")],
-            vec!["pkg/main.py".to_string()],
-        );
-
-        let index = index_project(&config).unwrap();
-        let findings = find_unused_symbols(&index);
-        let symbols = finding_symbols(&findings);
-        let diagnostics = unsupported_expansion_diagnostics(&index);
-
-        assert!(symbols.contains(&"pkg.main.ExampleEntity.name".to_string()));
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "DCF103");
-        assert!(diagnostics[0]
-            .message
-            .contains("cannot expand keyword payload for construction of pkg.main.ExampleEntity"));
-    }
-
-    #[test]
-    fn emits_unresolved_receiver_diagnostic_for_reachable_code() {
-        let workspace = test_workspace("emits_unresolved_receiver_diagnostic_for_reachable_code");
-        let package = workspace.join("pkg");
-        fs::create_dir_all(&package).unwrap();
-        fs::write(
-            package.join("main.py"),
-            r#"
-def run(x):
-    x.save()
-
-run(None)
-"#,
-        )
-        .unwrap();
-        let config = loaded_config(
-            &workspace,
-            vec![root(&package, "pkg")],
-            vec!["pkg/main.py".to_string()],
-        );
-
-        let index = index_project(&config).unwrap();
-        let diagnostics = unresolved_receiver_diagnostics(&index);
-
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "DCF101");
-        assert!(diagnostics[0]
-            .message
-            .contains("cannot resolve receiver type for x.save"));
-    }
-
-    #[test]
-    fn skips_unresolved_receiver_diagnostic_for_unreachable_code() {
-        let workspace = test_workspace("skips_unresolved_receiver_diagnostic_for_unreachable_code");
-        let package = workspace.join("pkg");
-        fs::create_dir_all(&package).unwrap();
-        fs::write(
-            package.join("main.py"),
-            r#"
-def live():
-    pass
-
-def dead(x):
-    x.save()
-
-live()
-"#,
-        )
-        .unwrap();
-        let config = loaded_config(
-            &workspace,
-            vec![root(&package, "pkg")],
-            vec!["pkg/main.py".to_string()],
-        );
-
-        let index = index_project(&config).unwrap();
-
-        assert!(unresolved_receiver_diagnostics(&index).is_empty());
-    }
-
-    fn finding_symbols(findings: &[Finding]) -> Vec<String> {
-        findings
-            .iter()
-            .map(|finding| finding.symbol.clone())
-            .collect()
-    }
-
-    fn loaded_config(
-        workspace: &Path,
-        roots: Vec<ResolvedRoot>,
-        entrypoints: Vec<String>,
-    ) -> LoadedProjectConfig {
-        LoadedProjectConfig {
-            config_path: workspace.join("dead-code-finder.json"),
-            project_dir: workspace.to_path_buf(),
-            roots,
-            entrypoints,
-            include_tests: false,
-            test_patterns: Vec::new(),
-        }
-    }
-
-    fn root(path: &Path, module: &str) -> ResolvedRoot {
-        ResolvedRoot {
-            path: path.to_path_buf(),
-            module: module.to_string(),
-        }
-    }
-
-    fn test_workspace(name: &str) -> PathBuf {
-        let unique = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!("deadcode_reachability_{name}_{unique}"));
-        fs::create_dir_all(&path).unwrap();
-        path
-    }
-}
+#[path = "reachability_tests.rs"]
+mod reachability_tests;

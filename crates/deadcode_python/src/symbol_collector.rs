@@ -1,5 +1,11 @@
 #[path = "symbol_expr.rs"]
 mod symbol_expr;
+#[path = "symbol_fields.rs"]
+mod symbol_fields;
+#[path = "symbol_imports.rs"]
+mod symbol_imports;
+#[path = "symbol_metadata.rs"]
+mod symbol_metadata;
 #[path = "symbol_types.rs"]
 mod symbol_types;
 
@@ -7,13 +13,17 @@ use std::collections::{HashMap, HashSet};
 
 use deadcode_core::SymbolKind;
 use ruff_python_ast as ast;
-use ruff_text_size::TextRange;
+use ruff_text_size::{Ranged, TextRange};
 
-use self::symbol_expr::{first_module_segment, is_main_guard, self_attribute_name, target_name};
+use self::symbol_expr::{first_module_segment, is_main_guard, target_name};
+use self::symbol_fields::collect_self_assignments;
+use self::symbol_imports::resolve_import_from_base;
+use self::symbol_metadata::{class_info, function_signature};
 use self::symbol_types::{constructor_type_name, type_name_from_expr};
 use super::{
-    AccessKind, ImportTarget, IndexedSymbol, MemberReference, ResolvedImport, SourceLocator,
-    SymbolReference, UnresolvedReceiver, UnsupportedExpansion,
+    AccessKind, CallArgumentType, ClassInfo, FunctionSignature, ImportTarget, IndexedSymbol,
+    MemberReference, ResolvedImport, SourceLocator, SymbolReference, UnresolvedReceiver,
+    UnsupportedExpansion,
 };
 
 pub(super) struct SymbolCollector<'a> {
@@ -22,6 +32,9 @@ pub(super) struct SymbolCollector<'a> {
     pub(super) locator: &'a SourceLocator,
     pub(super) symbols: &'a mut Vec<IndexedSymbol>,
     pub(super) imports: &'a mut Vec<ResolvedImport>,
+    pub(super) classes: &'a mut Vec<ClassInfo>,
+    pub(super) function_signatures: &'a mut Vec<FunctionSignature>,
+    pub(super) call_argument_types: &'a mut Vec<CallArgumentType>,
     pub(super) references: &'a mut Vec<SymbolReference>,
     pub(super) member_references: &'a mut Vec<MemberReference>,
     pub(super) unresolved_receivers: &'a mut Vec<UnresolvedReceiver>,
@@ -47,6 +60,7 @@ impl SymbolCollector<'_> {
                     SymbolKind::Function,
                     function.range,
                 );
+                self.push_function_signature(&function_owner, function);
                 let types = self.function_type_bindings(function, None);
                 self.collect_function_references(&function_owner, &function.body, types);
             }
@@ -58,6 +72,7 @@ impl SymbolCollector<'_> {
                     SymbolKind::Class,
                     class_def.range,
                 );
+                self.push_class_info(format!("{}.{}", self.module, class_name), class_def);
                 self.collect_class_body(class_name, &class_def.body);
             }
             ast::Stmt::Import(import) => {
@@ -78,7 +93,7 @@ impl SymbolCollector<'_> {
                 }
             }
             ast::Stmt::ImportFrom(import_from) => {
-                let Some(base_module) = self.resolve_import_from_base(import_from) else {
+                let Some(base_module) = resolve_import_from_base(self.module, import_from) else {
                     return;
                 };
                 let base_is_external = !self.known_modules.contains(&base_module);
@@ -128,14 +143,22 @@ impl SymbolCollector<'_> {
             match statement {
                 ast::Stmt::FunctionDef(function) => {
                     let method_name = function.name.as_str();
+                    let method_owner = format!("{}.{}.{}", self.module, class_name, method_name);
                     self.push_symbol(
-                        format!("{}.{}.{}", self.module, class_name, method_name),
+                        method_owner.clone(),
                         method_name,
                         SymbolKind::Method,
                         function.range,
                     );
-                    self.collect_self_assignments(class_name, &function.body);
-                    let method_owner = format!("{}.{}.{}", self.module, class_name, method_name);
+                    self.push_function_signature(&method_owner, function);
+                    collect_self_assignments(
+                        self.module,
+                        self.file,
+                        self.locator,
+                        self.symbols,
+                        class_name,
+                        &function.body,
+                    );
                     let types = self.function_type_bindings(function, Some(class_name));
                     self.collect_function_references(&method_owner, &function.body, types);
                 }
@@ -166,50 +189,6 @@ impl SymbolCollector<'_> {
         }
     }
 
-    fn collect_self_assignments(&mut self, class_name: &str, body: &[ast::Stmt]) {
-        for statement in body {
-            self.collect_self_assignments_in_statement(class_name, statement);
-        }
-    }
-
-    fn collect_self_assignments_in_statement(&mut self, class_name: &str, statement: &ast::Stmt) {
-        match statement {
-            ast::Stmt::Assign(assign) => {
-                for target in &assign.targets {
-                    if let Some(name) = self_attribute_name(target) {
-                        self.push_symbol(
-                            format!("{}.{}.{}", self.module, class_name, name),
-                            name,
-                            SymbolKind::Attribute,
-                            assign.range,
-                        );
-                    }
-                }
-            }
-            ast::Stmt::AnnAssign(assign) => {
-                if let Some(name) = self_attribute_name(&assign.target) {
-                    self.push_symbol(
-                        format!("{}.{}.{}", self.module, class_name, name),
-                        name,
-                        SymbolKind::Field,
-                        assign.range,
-                    );
-                }
-            }
-            ast::Stmt::If(if_stmt) => {
-                for nested in &if_stmt.body {
-                    self.collect_self_assignments_in_statement(class_name, nested);
-                }
-                for clause in &if_stmt.elif_else_clauses {
-                    for nested in &clause.body {
-                        self.collect_self_assignments_in_statement(class_name, nested);
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
     fn push_symbol(
         &mut self,
         qualified_name: String,
@@ -231,6 +210,20 @@ impl SymbolCollector<'_> {
             target,
             span: self.locator.span_from_range_string(self.file, range),
         });
+    }
+
+    fn push_class_info(&mut self, class: String, class_def: &ast::StmtClassDef) {
+        self.classes
+            .push(class_info(self.module, self.imports, class, class_def));
+    }
+
+    fn push_function_signature(&mut self, function: &str, function_def: &ast::StmtFunctionDef) {
+        self.function_signatures.push(function_signature(
+            self.module,
+            self.imports,
+            function,
+            function_def,
+        ));
     }
 
     fn push_reference(&mut self, from: &str, name: &str, range: TextRange) {
@@ -363,10 +356,23 @@ impl SymbolCollector<'_> {
             self.collect_expr_references(owner, &call.func, types);
         }
 
-        let constructor_type = type_name_from_expr(self.module, self.imports, &call.func);
-        for arg in &call.arguments.args {
+        let callee = type_name_from_expr(self.module, self.imports, &call.func);
+        for (position, arg) in call.arguments.args.iter().enumerate() {
+            if let (Some(callee), Some(concrete_type)) = (
+                callee.as_ref(),
+                constructor_type_name(self.module, self.imports, arg),
+            ) {
+                self.call_argument_types.push(CallArgumentType {
+                    from: owner.to_string(),
+                    callee: callee.clone(),
+                    position,
+                    concrete_type,
+                    span: self.locator.span_from_range_string(self.file, arg.range()),
+                });
+            }
             self.collect_expr_references(owner, arg, types);
         }
+        let constructor_type = type_name_from_expr(self.module, self.imports, &call.func);
         for keyword in &call.arguments.keywords {
             self.collect_expr_references(owner, &keyword.value, types);
             let Some(constructor_type) = constructor_type.as_ref() else {
@@ -489,24 +495,5 @@ impl SymbolCollector<'_> {
             access,
             span: self.locator.span_from_range_string(self.file, range),
         });
-    }
-
-    fn resolve_import_from_base(&self, import_from: &ast::StmtImportFrom) -> Option<String> {
-        let imported_module = import_from.module.as_ref().map(ast::Identifier::as_str);
-        if import_from.level == 0 {
-            return imported_module.map(ToString::to_string);
-        }
-
-        let mut parts = self.module.split('.').collect::<Vec<_>>();
-        parts.pop();
-        let ancestor_count = import_from.level.saturating_sub(1) as usize;
-        if ancestor_count > parts.len() {
-            return None;
-        }
-        parts.truncate(parts.len() - ancestor_count);
-        if let Some(imported_module) = imported_module {
-            parts.extend(imported_module.split('.'));
-        }
-        Some(parts.join("."))
     }
 }

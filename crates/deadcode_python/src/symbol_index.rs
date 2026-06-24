@@ -25,6 +25,9 @@ pub struct ModuleIndex {
     pub file: PathBuf,
     pub symbols: Vec<IndexedSymbol>,
     pub imports: Vec<ResolvedImport>,
+    pub classes: Vec<ClassInfo>,
+    pub function_signatures: Vec<FunctionSignature>,
+    pub call_argument_types: Vec<CallArgumentType>,
     pub references: Vec<SymbolReference>,
     pub member_references: Vec<MemberReference>,
     pub unresolved_receivers: Vec<UnresolvedReceiver>,
@@ -37,6 +40,27 @@ pub struct IndexedSymbol {
     pub qualified_name: String,
     pub name: String,
     pub kind: SymbolKind,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassInfo {
+    pub class: String,
+    pub bases: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionSignature {
+    pub function: String,
+    pub parameter_types: Vec<Option<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallArgumentType {
+    pub from: String,
+    pub callee: String,
+    pub position: usize,
+    pub concrete_type: String,
     pub span: SourceSpan,
 }
 
@@ -256,6 +280,9 @@ fn index_module(
         span: SourceSpan::new(file_display.clone(), 1, 1),
     }];
     let mut imports = Vec::new();
+    let mut classes = Vec::new();
+    let mut function_signatures = Vec::new();
+    let mut call_argument_types = Vec::new();
     let mut references = Vec::new();
     let mut member_references = Vec::new();
     let mut unresolved_receivers = Vec::new();
@@ -272,6 +299,9 @@ fn index_module(
                 locator: &locator,
                 symbols: &mut symbols,
                 imports: &mut imports,
+                classes: &mut classes,
+                function_signatures: &mut function_signatures,
+                call_argument_types: &mut call_argument_types,
                 references: &mut references,
                 member_references: &mut member_references,
                 unresolved_receivers: &mut unresolved_receivers,
@@ -297,6 +327,9 @@ fn index_module(
             file: file.to_path_buf(),
             symbols,
             imports,
+            classes,
+            function_signatures,
+            call_argument_types,
             references,
             member_references,
             unresolved_receivers,
