@@ -4,6 +4,9 @@ use deadcode_core::{Diagnostic, Finding, Severity, SymbolKind};
 
 use crate::symbol_index::{ClassInfo, FunctionSignature, ImportTarget, ModuleIndex, SymbolIndex};
 
+#[path = "reachability_protocol.rs"]
+mod reachability_protocol;
+
 pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
     let live = compute_live_symbols(index, RootSet::Main);
     let test_live = index
@@ -174,7 +177,12 @@ fn compute_live_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<Strin
                 continue;
             };
             if requires_subclass_check
-                && !is_subclass_or_same(&call_argument.concrete_type, base_type, &class_map)
+                && !is_subclass_or_same(
+                    &call_argument.concrete_type,
+                    base_type,
+                    &class_map,
+                    &symbol_kinds,
+                )
             {
                 continue;
             }
@@ -516,11 +524,18 @@ fn is_subclass_or_same(
     concrete_type: &str,
     base_type: &str,
     class_map: &HashMap<String, ClassInfo>,
+    symbol_kinds: &HashMap<String, SymbolKind>,
 ) -> bool {
     if concrete_type == base_type {
         return true;
     }
     is_subclass_inner(concrete_type, base_type, class_map, &mut HashSet::new())
+        || reachability_protocol::structurally_implements_protocol(
+            concrete_type,
+            base_type,
+            class_map,
+            symbol_kinds,
+        )
 }
 
 fn class_derives_from(
