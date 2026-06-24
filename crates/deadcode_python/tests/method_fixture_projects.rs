@@ -43,7 +43,12 @@ fn pydantic_model_validate_json_returns_class() {
 
     assert!(report.diagnostics.is_empty());
     assert!(!symbols.contains(&"pkg.main.Args.answer".to_string()));
-    assert!(symbols.contains(&"pkg.main.Args.unused".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Args.unused".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Args.details".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Details.status".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Details.nested_value".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Status.READY".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Status.WAITING".to_string()));
 }
 
 #[test]
