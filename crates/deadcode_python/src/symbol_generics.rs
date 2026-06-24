@@ -16,6 +16,13 @@ pub(super) fn field_read_type(
         ast::Expr::Name(receiver) => types.get(receiver.id.as_str()).cloned(),
         expr => expr_type(classes, expr, types),
     }?;
+    if receiver_type.external {
+        return Some(TypeBinding {
+            base: format!("{}.{}", receiver_type.base, attribute.attr.as_str()),
+            args: Vec::new(),
+            external: true,
+        });
+    }
     let Some(class_info) = classes
         .iter()
         .find(|class_info| class_info.class == receiver_type.base)
@@ -148,6 +155,9 @@ fn is_iterable_collection(type_name: &str) -> bool {
             | "typing.Sequence"
             | "typing.Set"
             | "typing.Tuple"
+            | "collections.abc.Sequence"
+            | "collections.abc.Iterable"
+            | "collections.abc.Collection"
     ) || type_name.ends_with(".list")
         || type_name.ends_with(".set")
         || type_name.ends_with(".tuple")
@@ -169,6 +179,13 @@ fn collection_item_type(collection_type: &TypeBinding) -> Option<TypeBinding> {
     }
     if is_iterable_collection(&collection_type.base) {
         return collection_type.args.first().cloned();
+    }
+    if collection_type.external {
+        return Some(TypeBinding {
+            base: format!("{}.__item__", collection_type.base),
+            args: Vec::new(),
+            external: true,
+        });
     }
     None
 }

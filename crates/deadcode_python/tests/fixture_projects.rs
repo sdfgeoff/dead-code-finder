@@ -79,6 +79,13 @@ fn external_type_flows_suppress_unresolved_receivers() {
 }
 
 #[test]
+fn external_reexports_preserve_external_type_flow() {
+    let report = analyze_fixture("external_reexports_preserve_external_type_flow");
+
+    assert!(report.diagnostics.is_empty());
+}
+
+#[test]
 fn generic_collection_iteration_resolves_feature_fields() {
     let report = analyze_fixture("generic_collection_iteration_resolves_feature_fields");
     let symbols = finding_symbols(&report);

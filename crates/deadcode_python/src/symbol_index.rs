@@ -316,23 +316,13 @@ fn reexport_map(modules: &[ModuleIndex]) -> ReexportMap {
     let mut reexports = ReexportMap::new();
     for module in modules {
         for import in &module.imports {
-            if import_target_is_local(&import.target) {
-                reexports.insert(
-                    (module.module.clone(), import.binding.clone()),
-                    import.target.clone(),
-                );
-            }
+            reexports.insert(
+                (module.module.clone(), import.binding.clone()),
+                import.target.clone(),
+            );
         }
     }
     reexports
-}
-
-fn import_target_is_local(target: &ImportTarget) -> bool {
-    match target {
-        ImportTarget::Module { external, .. }
-        | ImportTarget::Symbol { external, .. }
-        | ImportTarget::Star { external, .. } => !external,
-    }
 }
 
 fn resolve_route_globs(
