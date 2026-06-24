@@ -170,6 +170,10 @@ impl SymbolCollector<'_> {
                     self.collect_expr_references(owner, value, types);
                 }
             }
+            ast::Expr::Subscript(subscript) => {
+                self.collect_expr_references(owner, &subscript.value, types);
+                self.collect_expr_references(owner, &subscript.slice, types);
+            }
             _ => {}
         }
     }
@@ -308,12 +312,14 @@ impl SymbolCollector<'_> {
             ast::Expr::Name(receiver) => {
                 let receiver_name = receiver.id.as_str();
                 if self.imports.iter().any(|import| {
-                    import.binding == receiver_name
-                        && matches!(import.target, ImportTarget::Module { .. })
+                    import.binding == receiver_name && import_target_is_external(&import.target)
                 }) {
                     return;
                 }
-                types.get(receiver_name).cloned()
+                types
+                    .get(receiver_name)
+                    .cloned()
+                    .or_else(|| self.class_object_binding(receiver_name))
             }
             value => field_read_type(self.classes, value, types),
         };
@@ -341,5 +347,39 @@ impl SymbolCollector<'_> {
                         .span_from_range_string(self.file, attribute.range),
                 });
         }
+    }
+
+    fn class_object_binding(&self, receiver_name: &str) -> Option<TypeBinding> {
+        for import in self.imports.iter() {
+            if import.binding != receiver_name {
+                continue;
+            }
+            return match &import.target {
+                ImportTarget::Module {
+                    module,
+                    external: false,
+                } => Some(TypeBinding::erased(module.clone())),
+                ImportTarget::Symbol {
+                    module,
+                    name,
+                    external: false,
+                } => Some(TypeBinding::erased(format!("{module}.{name}"))),
+                ImportTarget::Symbol { external: true, .. } => return None,
+                _ => None,
+            };
+        }
+        let same_module = format!("{}.{}", self.module, receiver_name);
+        self.classes
+            .iter()
+            .any(|class_info| class_info.class == same_module)
+            .then(|| TypeBinding::erased(same_module))
+    }
+}
+
+fn import_target_is_external(target: &ImportTarget) -> bool {
+    match target {
+        ImportTarget::Module { external, .. }
+        | ImportTarget::Symbol { external, .. }
+        | ImportTarget::Star { external, .. } => *external,
     }
 }

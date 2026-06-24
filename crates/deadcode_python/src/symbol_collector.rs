@@ -76,6 +76,7 @@ impl SymbolCollector<'_> {
                     function.range,
                 );
                 self.push_function_signature(&function_owner, function);
+                self.collect_function_annotation_references(&function_owner, function);
                 self.collect_decorator_rules(function, module_types);
                 let mut types = module_types.clone();
                 types.extend(self.function_type_bindings(function, None));
@@ -139,6 +140,7 @@ impl SymbolCollector<'_> {
                         function.range,
                     );
                     self.push_function_signature(&method_owner, function);
+                    self.collect_function_annotation_references(&method_owner, function);
                     collect_self_assignments(
                         self.module,
                         self.file,
@@ -158,6 +160,12 @@ impl SymbolCollector<'_> {
                             name,
                             SymbolKind::Field,
                             assign.range,
+                        );
+                        let class_owner = format!("{}.{}", self.module, class_name);
+                        self.collect_expr_references(
+                            &class_owner,
+                            &assign.annotation,
+                            module_types,
                         );
                     }
                 }
@@ -241,6 +249,22 @@ impl SymbolCollector<'_> {
         }
         for statement in &function.body {
             self.collect_statement_references(owner, statement, &mut types);
+        }
+    }
+
+    fn collect_function_annotation_references(
+        &mut self,
+        owner: &str,
+        function: &ast::StmtFunctionDef,
+    ) {
+        let types = HashMap::new();
+        for parameter in function.parameters.iter() {
+            if let Some(annotation) = parameter.as_parameter().annotation() {
+                self.collect_expr_references(owner, annotation, &types);
+            }
+        }
+        if let Some(returns) = &function.returns {
+            self.collect_expr_references(owner, returns, &types);
         }
     }
 
