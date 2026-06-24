@@ -272,6 +272,14 @@ fn max_call_type(
 }
 
 pub(super) fn member_reference_target_bases(receiver_type: &TypeBinding) -> Vec<String> {
+    if is_type_object(&receiver_type.base) {
+        return receiver_type
+            .args
+            .iter()
+            .filter(|arg| !arg.external)
+            .map(|arg| arg.base.clone())
+            .collect();
+    }
     if !is_union_type(&receiver_type.base) {
         return vec![receiver_type.base.clone()];
     }
@@ -386,11 +394,30 @@ fn builtin_constructor_call_type(
             external: false,
         });
     }
+    if name.id.as_str() == "type" {
+        let instance_type = call
+            .arguments
+            .args
+            .first()
+            .and_then(|arg| expr_type(classes, arg, types))?;
+        return Some(TypeBinding {
+            base: "type".to_string(),
+            args: vec![instance_type],
+            external: false,
+        });
+    }
     matches!(
         name.id.as_str(),
         "bool" | "bytes" | "complex" | "float" | "int" | "str"
     )
     .then(|| TypeBinding::erased(name.id.as_str().to_string()))
+}
+
+fn is_type_object(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "type" | "typing.Type" | "typing_extensions.Type" | "Type"
+    ) || type_name.ends_with(".Type")
 }
 
 fn builtin_method_call_type(

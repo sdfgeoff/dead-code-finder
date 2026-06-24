@@ -19,7 +19,9 @@ fn registry_stored_subtype_method_liveness() {
 
     assert!(report.diagnostics.is_empty());
     assert!(!symbols.contains(&"pkg.main.Tool.execute".to_string()));
+    assert!(!symbols.contains(&"pkg.main.LiveTool.name".to_string()));
     assert!(!symbols.contains(&"pkg.main.LiveTool.execute".to_string()));
+    assert!(symbols.contains(&"pkg.main.DeadTool.name".to_string()));
     assert!(symbols.contains(&"pkg.main.DeadTool.execute".to_string()));
 }
 
