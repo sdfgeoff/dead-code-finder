@@ -16,6 +16,20 @@ fn base_typed_factory_wrapper_concrete_flow() {
     assert!(symbols.contains(&"pkg.providers.MemoryConnection.write".to_string()));
 }
 
+#[test]
+fn decorator_callable_provider_factory_flow() {
+    let report = analyze_fixture("decorator_callable_provider_factory_flow");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.cache.CallableCache.__call__".to_string()));
+    assert!(!symbols.contains(&"pkg.cache.CallableCache.get_items".to_string()));
+    assert!(!symbols.contains(&"pkg.providers.RedisConnection.lookup".to_string()));
+    assert!(symbols.contains(&"pkg.cache.CallableCache.store_items".to_string()));
+    assert!(symbols.contains(&"pkg.providers.RedisConnection.write".to_string()));
+    assert!(symbols.contains(&"pkg.providers.MemoryConnection.lookup".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))

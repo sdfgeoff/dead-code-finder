@@ -6,6 +6,34 @@ use super::SymbolCollector;
 use crate::symbol_index::TypeBinding;
 
 impl SymbolCollector<'_> {
+    pub(super) fn collect_callable_argument_lambda_references(
+        &mut self,
+        owner: &str,
+        lambda: &ast::ExprLambda,
+        callable_annotation: &TypeBinding,
+        types: &HashMap<String, TypeBinding>,
+    ) -> bool {
+        if !is_callable_type(&callable_annotation.base) {
+            return false;
+        }
+        let Some(parameters) = lambda.parameters.as_deref() else {
+            return false;
+        };
+        let mut scoped_types = types.clone();
+        let parameter_types = callable_annotation.args.split_last().map(|(_, args)| args);
+        let Some(parameter_types) = parameter_types else {
+            return false;
+        };
+        for (parameter, parameter_type) in parameters.iter().zip(parameter_types) {
+            scoped_types.insert(
+                parameter.as_parameter().name.as_str().to_string(),
+                parameter_type.clone(),
+            );
+        }
+        self.collect_expr_references(owner, &lambda.body, &scoped_types);
+        true
+    }
+
     pub(super) fn collect_lambda_references(
         &mut self,
         owner: &str,
@@ -69,4 +97,11 @@ impl SymbolCollector<'_> {
         self.collect_expr_references(owner, &lambda.body, &scoped_types);
         true
     }
+}
+
+fn is_callable_type(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "typing.Callable" | "collections.abc.Callable" | "Callable"
+    )
 }

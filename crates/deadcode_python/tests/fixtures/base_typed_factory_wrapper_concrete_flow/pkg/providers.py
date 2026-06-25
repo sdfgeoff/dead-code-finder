@@ -1,3 +1,6 @@
+from typing import Callable
+
+
 class Connection:
     def lookup(self, key: str) -> bytes | None:
         raise NotImplementedError
@@ -26,12 +29,15 @@ class WrapperConnection(Connection):
     def __init__(self, providers: list[Connection]):
         self.providers = providers
 
-    def lookup(self, key: str) -> bytes | None:
+    def _try_with_provider(self, operation: Callable[[Connection], bytes | None]):
         for provider in self.providers:
-            value = provider.lookup(key)
+            value = operation(provider)
             if value is not None:
                 return value
         return None
+
+    def lookup(self, key: str) -> bytes | None:
+        return self._try_with_provider(lambda provider: provider.lookup(key))
 
     def write(self, key: str, value: bytes | None) -> None:
         for provider in self.providers:

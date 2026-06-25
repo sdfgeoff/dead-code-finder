@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ruff_python_ast as ast;
 
-use super::symbol_rules::constructor_binding;
+use super::symbol_rules::{callable_identity, constructor_binding};
 use super::SymbolCollector;
 use crate::symbol_index::TypeBinding;
 
@@ -24,6 +24,7 @@ impl SymbolCollector<'_> {
                 .collect();
         }
         constructor_binding(self.module, self.imports, self.rules, arg)
+            .or_else(|| self.function_object_return_binding(arg))
             .or_else(|| self.class_object_argument_binding(arg))
             .or_else(|| self.assignment_value_binding(arg, types))
             .map(|binding| concrete_types_from_binding(&binding))
@@ -45,6 +46,19 @@ impl SymbolCollector<'_> {
             _ => None,
         }
     }
+
+    fn function_object_return_binding(&self, expr: &ast::Expr) -> Option<TypeBinding> {
+        let callable = callable_identity(self.module, self.imports, expr)?;
+        self.available_fn_sigs
+            .iter()
+            .find(|signature| signature.function == callable)
+            .and_then(|signature| {
+                signature
+                    .concrete_return_type
+                    .clone()
+                    .or_else(|| signature.return_type.clone())
+            })
+    }
 }
 
 fn concrete_types_from_binding(binding: &TypeBinding) -> Vec<String> {
@@ -55,6 +69,13 @@ fn concrete_types_from_binding(binding: &TypeBinding) -> Vec<String> {
             .flat_map(concrete_types_from_binding)
             .collect();
     }
+    if is_callable_type(&binding.base) {
+        return binding
+            .args
+            .last()
+            .map(concrete_types_from_binding)
+            .unwrap_or_default();
+    }
     if is_collection_type(&binding.base) {
         return binding
             .args
@@ -63,6 +84,13 @@ fn concrete_types_from_binding(binding: &TypeBinding) -> Vec<String> {
             .unwrap_or_default();
     }
     vec![binding.base.clone()]
+}
+
+fn is_callable_type(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "typing.Callable" | "collections.abc.Callable" | "Callable"
+    )
 }
 
 fn is_collection_type(type_name: &str) -> bool {

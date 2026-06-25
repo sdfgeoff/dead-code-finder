@@ -1,21 +1,15 @@
 use std::collections::HashMap;
 
 use ruff_python_ast as ast;
-use ruff_text_size::Ranged;
 
 use super::symbol_aliases::expand_alias_binding;
 use super::symbol_branch_narrowing::{merge_completed_branch_types, suite_returns};
-use super::symbol_construction::constructed_type_for_call;
 use super::symbol_expr::target_name;
 use super::symbol_imports::{collect_import, collect_import_from};
 use super::symbol_iteration::bind_collection_unpack_target;
-use super::symbol_members::push_member_reference;
-use super::symbol_rules::{callable_argument_references, callable_identity};
 use super::symbol_types::type_binding_from_expr;
 use super::SymbolCollector;
-use crate::symbol_index::{
-    AccessKind, CallArgumentType, ImportTarget, TypeBinding, UnsupportedExpansion,
-};
+use crate::symbol_index::{AccessKind, ImportTarget, TypeBinding};
 
 impl SymbolCollector<'_> {
     pub(super) fn collect_statement_references(
@@ -293,126 +287,6 @@ impl SymbolCollector<'_> {
         }
     }
 
-    fn collect_call_references(
-        &mut self,
-        owner: &str,
-        call: &ast::ExprCall,
-        types: &HashMap<String, TypeBinding>,
-    ) {
-        if let ast::Expr::Attribute(attribute) = call.func.as_ref() {
-            self.collect_member_reference(owner, attribute, AccessKind::Call, types);
-            self.collect_expr_references(owner, &attribute.value, types);
-        } else {
-            self.collect_expr_references(owner, &call.func, types);
-        }
-
-        let callee = callable_identity(self.module, self.imports, &call.func);
-        let flow_callee = callee.as_deref().map(|callee| {
-            self.constructor_init_callee(callee)
-                .unwrap_or_else(|| callee.to_string())
-        });
-        for (name, range) in callable_argument_references(
-            self.module,
-            self.imports,
-            self.rules,
-            call,
-            callee.as_deref(),
-            types,
-        ) {
-            self.push_reference(owner, &name, range);
-        }
-        self.collect_factory_model_surfaces(owner, call, types);
-        self.collect_pydantic_validation_field_references(owner, call, types);
-        for binding in self.local_call_validated_return_bindings(call, types) {
-            self.collect_validated_type_references(owner, &binding, call.range(), &mut Vec::new());
-        }
-        for (position, arg) in call.arguments.args.iter().enumerate() {
-            let concrete_types = self.concrete_argument_types(arg, types);
-            for concrete_type in concrete_types {
-                let Some(callee) = &flow_callee else {
-                    continue;
-                };
-                let position = if callee.ends_with(".__init__") {
-                    position + 1
-                } else {
-                    position
-                };
-                self.call_args.push(CallArgumentType {
-                    from: owner.to_string(),
-                    callee: callee.clone(),
-                    position,
-                    concrete_type,
-                    span: self.locator.span_from_range_string(self.file, arg.range()),
-                });
-            }
-            self.collect_expr_references(owner, arg, types);
-        }
-        let constructor =
-            constructed_type_for_call(self.module, self.imports, self.rules, &call.func, types);
-        if let Some((constructor_type, _)) = constructor.as_ref() {
-            push_member_reference(
-                self.member_refs,
-                self.locator,
-                self.file,
-                owner,
-                format!("{constructor_type}.__init__"),
-                AccessKind::Construct,
-                call.func.range(),
-            );
-        }
-        for keyword in &call.arguments.keywords {
-            if self.collect_max_key_lambda_references(owner, call, keyword, types) {
-                continue;
-            }
-            if let (Some(callee), Some(arg)) = (&flow_callee, &keyword.arg) {
-                if let Some(position) = self.keyword_argument_position(callee, arg.as_str()) {
-                    for concrete_type in self.concrete_argument_types(&keyword.value, types) {
-                        self.call_args.push(CallArgumentType {
-                            from: owner.to_string(),
-                            callee: callee.clone(),
-                            position,
-                            concrete_type,
-                            span: self
-                                .locator
-                                .span_from_range_string(self.file, keyword.value.range()),
-                        });
-                    }
-                }
-            }
-            self.collect_expr_references(owner, &keyword.value, types);
-            let Some((constructor_type, is_type_parameter)) = constructor.as_ref() else {
-                continue;
-            };
-            if let Some(arg) = &keyword.arg {
-                push_member_reference(
-                    self.member_refs,
-                    self.locator,
-                    self.file,
-                    owner,
-                    format!("{constructor_type}.{}", arg.as_str()),
-                    AccessKind::Construct,
-                    keyword.range,
-                );
-            } else if self.expand_model_dump_keyword(
-                owner,
-                constructor_type,
-                &keyword.value,
-                types,
-                keyword.range,
-            ) {
-                continue;
-            } else if !is_type_parameter {
-                self.unsupported.push(UnsupportedExpansion {
-                    from: owner.to_string(),
-                    target: constructor_type.clone(),
-                    span: self
-                        .locator
-                        .span_from_range_string(self.file, keyword.range),
-                });
-            }
-        }
-    }
-
     pub(super) fn class_object_binding(&self, receiver_name: &str) -> Option<TypeBinding> {
         for import in self.imports.iter() {
             if import.binding != receiver_name {
@@ -439,7 +313,7 @@ impl SymbolCollector<'_> {
             .then(|| TypeBinding::erased(same_module))
     }
 
-    fn constructor_init_callee(&self, callee: &str) -> Option<String> {
+    pub(super) fn constructor_init_callee(&self, callee: &str) -> Option<String> {
         self.available_classes
             .iter()
             .any(|class_info| class_info.class == callee)

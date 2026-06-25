@@ -136,6 +136,23 @@ fn type_args_from_expr(
         ast::Expr::Tuple(tuple) => tuple
             .elts
             .iter()
+            .flat_map(|expr| callable_arg_list_or_type(module, imports, expr))
+            .collect(),
+        expr => type_binding_from_expr(module, imports, expr)
+            .into_iter()
+            .collect(),
+    }
+}
+
+fn callable_arg_list_or_type(
+    module: &str,
+    imports: &[ResolvedImport],
+    expr: &ast::Expr,
+) -> Vec<TypeBinding> {
+    match expr {
+        ast::Expr::List(list) => list
+            .elts
+            .iter()
             .filter_map(|expr| type_binding_from_expr(module, imports, expr))
             .collect(),
         expr => type_binding_from_expr(module, imports, expr)

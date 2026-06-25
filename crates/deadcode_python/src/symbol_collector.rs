@@ -12,6 +12,8 @@ mod symbol_branch_narrowing;
 mod symbol_branch_types;
 #[path = "symbol_call_args.rs"]
 mod symbol_call_args;
+#[path = "symbol_call_references.rs"]
+mod symbol_call_references;
 #[path = "symbol_callable_alias.rs"]
 mod symbol_callable_alias;
 #[path = "symbol_comprehension_narrowing.rs"]

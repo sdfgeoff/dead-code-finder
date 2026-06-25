@@ -247,7 +247,10 @@ fn init_self_field(
                     .iter()
                     .find(|(parameter, _)| parameter == value.id.as_str())
                     .map(|(_, type_name)| type_name.clone())?,
-                ast::Expr::Call(call) => type_binding_from_expr(module, imports, &call.func)?,
+                ast::Expr::Call(call) => {
+                    callable_parameter_return_type(&call.func, parameter_types)
+                        .or_else(|| type_binding_from_expr(module, imports, &call.func))?
+                }
                 value => coalesced_constructor_type(module, imports, value, parameter_types)
                     .or_else(|| collection_constructor_type(module, imports, value))?,
             };
@@ -264,6 +267,29 @@ fn init_self_field(
         name: field_name.to_string(),
         annotation: FieldAnnotation::Concrete(type_name),
     })
+}
+
+fn callable_parameter_return_type(
+    func: &ast::Expr,
+    parameter_types: &[(String, TypeBinding)],
+) -> Option<TypeBinding> {
+    let ast::Expr::Name(name) = func else {
+        return None;
+    };
+    let binding = parameter_types
+        .iter()
+        .find(|(parameter, _)| parameter == name.id.as_str())
+        .map(|(_, binding)| binding)?;
+    is_callable_type(&binding.base)
+        .then(|| binding.args.last().cloned())
+        .flatten()
+}
+
+fn is_callable_type(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "typing.Callable" | "collections.abc.Callable" | "Callable"
+    )
 }
 
 fn coalesced_constructor_type(
