@@ -70,9 +70,14 @@ pub struct ConstructorRule {
 #[serde(rename_all = "camelCase")]
 pub struct FactoryReturnRule {
     pub function: String,
+    #[serde(default)]
     pub type_keyword: String,
     #[serde(default)]
+    pub type_position: Option<usize>,
+    #[serde(default)]
     pub input_type_keyword: Option<String>,
+    #[serde(default)]
+    pub input_type_position: Option<usize>,
     #[serde(default)]
     pub return_container: Option<String>,
     #[serde(default)]
@@ -250,9 +255,10 @@ fn validate_rules(rules: &RuleConfig) -> Result<(), ConfigError> {
                 message: "factory return function must not be empty".to_string(),
             });
         }
-        if factory_return.type_keyword.trim().is_empty() {
+        if factory_return.type_keyword.trim().is_empty() && factory_return.type_position.is_none() {
             return Err(ConfigError::InvalidRule {
-                message: "factory return typeKeyword must not be empty".to_string(),
+                message: "factory return typeKeyword or typePosition must be configured"
+                    .to_string(),
             });
         }
         if factory_return

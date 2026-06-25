@@ -38,6 +38,11 @@ fn factory_model_surface_fields_marked_live() {
     assert!(!symbols.contains(&"pkg.db.FirstEvent.payload".to_string()));
     assert!(!symbols.contains(&"pkg.db.SecondEvent.kind".to_string()));
     assert!(!symbols.contains(&"pkg.db.SecondEvent.code".to_string()));
+    assert!(!symbols.contains(&"pkg.db.PositionalInput.user_id".to_string()));
+    assert!(!symbols.contains(&"pkg.db.PositionalInput.record_id".to_string()));
+    assert!(!symbols.contains(&"pkg.db.PositionalOutput.user_id".to_string()));
+    assert!(!symbols.contains(&"pkg.db.PositionalOutput.group_id".to_string()));
+    assert!(!symbols.contains(&"pkg.db.PositionalOutput.record_id".to_string()));
     assert!(symbols.contains(&"pkg.db.DeadRow.value".to_string()));
 }
 

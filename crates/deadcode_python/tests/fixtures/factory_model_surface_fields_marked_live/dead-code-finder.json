@@ -8,6 +8,14 @@
         "typeKeyword": "output",
         "markInputFields": true,
         "markOutputFields": true
+      },
+      {
+        "function": "pkg.store.query_returning_list",
+        "typePosition": 1,
+        "inputTypePosition": 0,
+        "returnContainer": "list",
+        "markInputFields": true,
+        "markOutputFields": true
       }
     ]
   }

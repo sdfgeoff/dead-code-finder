@@ -114,30 +114,50 @@ pub(super) fn factory_return_binding(
         return None;
     };
     let callable = callable_identity(module, imports, &call.func)?;
-    let rule = rules
+    for rule in rules
         .factory_returns
         .iter()
-        .find(|rule| rule.function == callable)?;
+        .filter(|rule| rule.function == callable)
+    {
+        let Some(output_expr) = factory_output_expr(call, rule) else {
+            continue;
+        };
+        let Some(output_type) = type_binding_from_expr(module, imports, output_expr) else {
+            continue;
+        };
+        let return_type = match rule.return_container.as_deref() {
+            Some("list") => TypeBinding {
+                base: "list".to_string(),
+                args: vec![output_type],
+                external: false,
+            },
+            _ => output_type,
+        };
+        return Some(TypeBinding {
+            base: "typing.Callable".to_string(),
+            args: vec![return_type],
+            external: false,
+        });
+    }
+    None
+}
+
+fn factory_output_expr<'a>(
+    call: &'a ast::ExprCall,
+    rule: &crate::config::FactoryReturnRule,
+) -> Option<&'a ast::Expr> {
+    if let Some(position) = rule.type_position {
+        if let Some(arg) = call.arguments.args.get(position) {
+            return Some(arg);
+        }
+    }
     let output_keyword = call.arguments.keywords.iter().find(|keyword| {
         keyword
             .arg
             .as_ref()
             .is_some_and(|name| name.as_str() == rule.type_keyword)
     })?;
-    let output_type = type_binding_from_expr(module, imports, &output_keyword.value)?;
-    let return_type = match rule.return_container.as_deref() {
-        Some("list") => TypeBinding {
-            base: "list".to_string(),
-            args: vec![output_type],
-            external: false,
-        },
-        _ => output_type,
-    };
-    Some(TypeBinding {
-        base: "typing.Callable".to_string(),
-        args: vec![return_type],
-        external: false,
-    })
+    Some(&output_keyword.value)
 }
 
 pub(super) fn constructed_type_from_callee(

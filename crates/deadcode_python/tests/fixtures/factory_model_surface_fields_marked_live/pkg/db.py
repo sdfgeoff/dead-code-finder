@@ -1,6 +1,6 @@
 from typing import Annotated, Union
 
-from pkg.store import query_returning_one
+from pkg.store import query_returning_list, query_returning_one
 
 
 class InputRow:
@@ -16,6 +16,17 @@ class OutputRow:
 
 class DeadRow:
     value: str
+
+
+class PositionalInput:
+    user_id: int
+    record_id: int
+
+
+class PositionalOutput:
+    user_id: int
+    group_id: int
+    record_id: int
 
 
 class FirstEvent:
@@ -41,4 +52,10 @@ get_event = query_returning_one(
     input=InputRow,
     output=EventRow,
     sql="SELECT kind, payload, code FROM event WHERE user_id = :user_id",
+)
+
+get_associations = query_returning_list(
+    PositionalInput,
+    PositionalOutput,
+    "SELECT user_id, group_id, record_id FROM user_company_customer",
 )

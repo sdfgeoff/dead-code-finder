@@ -29,14 +29,21 @@ impl SymbolCollector<'_> {
             .collect::<Vec<_>>();
         for rule in rules {
             if rule.mark_input_fields {
-                let keyword = rule.input_type_keyword.as_deref().unwrap_or("input");
-                self.collect_factory_model_surface(owner, call, keyword, AccessKind::Read, types);
+                self.collect_factory_model_surface(
+                    owner,
+                    call,
+                    rule.input_type_keyword.as_deref().unwrap_or("input"),
+                    rule.input_type_position,
+                    AccessKind::Read,
+                    types,
+                );
             }
             if rule.mark_output_fields {
                 self.collect_factory_model_surface(
                     owner,
                     call,
                     &rule.type_keyword,
+                    rule.type_position,
                     AccessKind::Construct,
                     types,
                 );
@@ -49,22 +56,17 @@ impl SymbolCollector<'_> {
         owner: &str,
         call: &ast::ExprCall,
         keyword_name: &str,
+        position: Option<usize>,
         access: AccessKind,
         _types: &HashMap<String, TypeBinding>,
     ) {
-        let Some(keyword) = call.arguments.keywords.iter().find(|keyword| {
-            keyword
-                .arg
-                .as_ref()
-                .is_some_and(|arg| arg.as_str() == keyword_name)
-        }) else {
+        let Some((value, range)) = factory_model_argument(call, keyword_name, position) else {
             return;
         };
-        let Some(binding) = type_binding_from_expr(self.module, self.imports, &keyword.value)
-        else {
+        let Some(binding) = type_binding_from_expr(self.module, self.imports, value) else {
             return;
         };
-        self.collect_model_surface_binding(owner, &binding, access, keyword.value.range());
+        self.collect_model_surface_binding(owner, &binding, access, range);
     }
 
     fn collect_model_surface_binding(
@@ -98,6 +100,25 @@ impl SymbolCollector<'_> {
             self.collect_model_surface_binding(owner, &field_type, access.clone(), range);
         }
     }
+}
+
+fn factory_model_argument<'a>(
+    call: &'a ast::ExprCall,
+    keyword_name: &str,
+    position: Option<usize>,
+) -> Option<(&'a ast::Expr, ruff_text_size::TextRange)> {
+    if let Some(position) = position {
+        if let Some(arg) = call.arguments.args.get(position) {
+            return Some((arg, arg.range()));
+        }
+    }
+    let keyword = call.arguments.keywords.iter().find(|keyword| {
+        keyword
+            .arg
+            .as_ref()
+            .is_some_and(|arg| arg.as_str() == keyword_name)
+    })?;
+    Some((&keyword.value, keyword.value.range()))
 }
 
 fn class_fields(classes: &[ClassInfo], class_name: &str) -> Vec<(String, TypeBinding)> {
