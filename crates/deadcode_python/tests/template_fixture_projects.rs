@@ -17,6 +17,16 @@ fn union_template_alias_field_read() {
     assert!(symbols.contains(&"pkg.third.ThirdTemplate.detail".to_string()));
 }
 
+#[test]
+fn package_reexport_function_call() {
+    let report = analyze_fixture("package_reexport_function_call");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.helpers.live_helper".to_string()));
+    assert!(symbols.contains(&"pkg.helpers.unused_helper".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))

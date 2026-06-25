@@ -1,0 +1,13 @@
+{
+  "roots": [
+    {
+      "path": "pkg",
+      "module": "pkg"
+    },
+    {
+      "path": "app",
+      "module": "app"
+    }
+  ],
+  "entrypoints": ["app/main.py"]
+}

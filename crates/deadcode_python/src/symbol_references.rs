@@ -154,6 +154,12 @@ impl SymbolCollector<'_> {
                     self.collect_statement_references(owner, nested, types);
                 }
             }
+            ast::Stmt::Assert(assert_stmt) => {
+                self.collect_expr_references(owner, &assert_stmt.test, types);
+                if let Some(msg) = &assert_stmt.msg {
+                    self.collect_expr_references(owner, msg, types);
+                }
+            }
             ast::Stmt::Try(try_stmt) => {
                 for nested in &try_stmt.body {
                     self.collect_statement_references(owner, nested, types);
