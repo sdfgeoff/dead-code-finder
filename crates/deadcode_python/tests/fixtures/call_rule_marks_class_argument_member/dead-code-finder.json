@@ -1,0 +1,15 @@
+{
+  "roots": [{ "path": "pkg", "module": "pkg" }],
+  "entrypoints": ["pkg/app.py"],
+  "rules": {
+    "calls": [
+      {
+        "receiverType": "pkg.framework.Application",
+        "method": "add_middleware",
+        "effect": "useArgumentMember",
+        "argument": 0,
+        "member": "dispatch"
+      }
+    ]
+  }
+}

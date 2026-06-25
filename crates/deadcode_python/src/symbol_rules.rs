@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ruff_python_ast as ast;
-use ruff_text_size::TextRange;
+use ruff_text_size::{Ranged, TextRange};
 
 use crate::config::RuleConfig;
 use crate::symbol_index::{ImportTarget, ResolvedImport, TypeBinding};
@@ -158,6 +158,8 @@ pub(super) fn callable_identity(
 }
 
 pub(super) fn callable_argument_references(
+    module: &str,
+    imports: &[ResolvedImport],
     rules: &RuleConfig,
     call: &ast::ExprCall,
     callee: Option<&str>,
@@ -165,13 +167,30 @@ pub(super) fn callable_argument_references(
 ) -> Vec<(String, TextRange)> {
     let mut references = Vec::new();
     for rule in &rules.calls {
-        if rule.effect != "useCallableArgument" || !call_rule_matches(rule, call, callee, types) {
+        if !call_rule_matches(rule, call, callee, types) {
             continue;
         }
-        let Some(ast::Expr::Name(name)) = call.arguments.args.get(rule.argument) else {
-            continue;
-        };
-        references.push((name.id.as_str().to_string(), name.range));
+        match rule.effect.as_str() {
+            "useCallableArgument" => {
+                let Some(ast::Expr::Name(name)) = call.arguments.args.get(rule.argument) else {
+                    continue;
+                };
+                references.push((name.id.as_str().to_string(), name.range));
+            }
+            "useArgumentMember" => {
+                let Some(argument) = call.arguments.args.get(rule.argument) else {
+                    continue;
+                };
+                let Some(member) = &rule.member else {
+                    continue;
+                };
+                let Some(argument_type) = callable_identity(module, imports, argument) else {
+                    continue;
+                };
+                references.push((format!("{argument_type}.{member}"), argument.range()));
+            }
+            _ => {}
+        }
     }
     references
 }

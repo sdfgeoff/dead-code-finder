@@ -19,6 +19,17 @@ fn decorator_boundary_models_mark_nested_pydantic_fields_live() {
     assert!(symbols.contains(&"api.main.NotExposed.field".to_string()));
 }
 
+#[test]
+fn call_rule_marks_class_argument_member_live() {
+    let report = analyze_fixture("call_rule_marks_class_argument_member");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.middleware.LoggedMiddleware.dispatch".to_string()));
+    assert!(!symbols.contains(&"pkg.middleware.LoggedMiddleware.record_request".to_string()));
+    assert!(symbols.contains(&"pkg.middleware.UnusedMiddleware.dispatch".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     analyze_project(&AnalyzeOptions {
         config_path: fixture_path(name).join("dead-code-finder.json"),

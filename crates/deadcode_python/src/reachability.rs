@@ -405,6 +405,10 @@ fn resolve_reference(
     name: &str,
     symbol_kinds: &HashMap<String, SymbolKind>,
 ) -> Option<String> {
+    if symbol_kinds.contains_key(name) {
+        return Some(name.to_string());
+    }
+
     for import in &module.imports {
         if import.binding != name {
             continue;

@@ -306,9 +306,14 @@ impl SymbolCollector<'_> {
             self.constructor_init_callee(callee)
                 .unwrap_or_else(|| callee.to_string())
         });
-        for (name, range) in
-            callable_argument_references(self.rules, call, callee.as_deref(), types)
-        {
+        for (name, range) in callable_argument_references(
+            self.module,
+            self.imports,
+            self.rules,
+            call,
+            callee.as_deref(),
+            types,
+        ) {
             self.push_reference(owner, &name, range);
         }
         self.collect_factory_model_surfaces(owner, call, types);
