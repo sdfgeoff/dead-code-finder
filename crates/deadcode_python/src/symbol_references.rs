@@ -168,6 +168,18 @@ impl SymbolCollector<'_> {
                     self.collect_expr_references(owner, cause, types);
                 }
             }
+            ast::Stmt::Match(match_stmt) => {
+                self.collect_expr_references(owner, &match_stmt.subject, types);
+                for case in &match_stmt.cases {
+                    self.collect_pattern_references(owner, &case.pattern, types);
+                    if let Some(guard) = &case.guard {
+                        self.collect_expr_references(owner, guard, types);
+                    }
+                    for nested in &case.body {
+                        self.collect_statement_references(owner, nested, types);
+                    }
+                }
+            }
             ast::Stmt::Try(try_stmt) => {
                 for nested in &try_stmt.body {
                     self.collect_statement_references(owner, nested, types);
@@ -203,6 +215,52 @@ impl SymbolCollector<'_> {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn collect_pattern_references(
+        &mut self,
+        owner: &str,
+        pattern: &ast::Pattern,
+        types: &HashMap<String, TypeBinding>,
+    ) {
+        match pattern {
+            ast::Pattern::MatchValue(match_value) => {
+                self.collect_expr_references(owner, &match_value.value, types);
+            }
+            ast::Pattern::MatchSingleton(_) | ast::Pattern::MatchStar(_) => {}
+            ast::Pattern::MatchSequence(match_sequence) => {
+                for pattern in &match_sequence.patterns {
+                    self.collect_pattern_references(owner, pattern, types);
+                }
+            }
+            ast::Pattern::MatchMapping(match_mapping) => {
+                for key in &match_mapping.keys {
+                    self.collect_expr_references(owner, key, types);
+                }
+                for pattern in &match_mapping.patterns {
+                    self.collect_pattern_references(owner, pattern, types);
+                }
+            }
+            ast::Pattern::MatchClass(match_class) => {
+                self.collect_expr_references(owner, &match_class.cls, types);
+                for pattern in &match_class.arguments.patterns {
+                    self.collect_pattern_references(owner, pattern, types);
+                }
+                for keyword in &match_class.arguments.keywords {
+                    self.collect_pattern_references(owner, &keyword.pattern, types);
+                }
+            }
+            ast::Pattern::MatchAs(match_as) => {
+                if let Some(pattern) = &match_as.pattern {
+                    self.collect_pattern_references(owner, pattern, types);
+                }
+            }
+            ast::Pattern::MatchOr(match_or) => {
+                for pattern in &match_or.patterns {
+                    self.collect_pattern_references(owner, pattern, types);
+                }
+            }
         }
     }
 

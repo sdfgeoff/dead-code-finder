@@ -13,6 +13,19 @@ fn raise_statement_references_exception() {
     assert!(symbols.contains(&"pkg.main.UnusedError".to_string()));
 }
 
+#[test]
+fn match_statement_references_patterns() {
+    let report = analyze_fixture("match_statement_references_patterns");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.LivePattern".to_string()));
+    assert!(!symbols.contains(&"pkg.main.guard".to_string()));
+    assert!(!symbols.contains(&"pkg.main.live_body".to_string()));
+    assert!(symbols.contains(&"pkg.main.UnusedPattern".to_string()));
+    assert!(symbols.contains(&"pkg.main.unused_body".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))
