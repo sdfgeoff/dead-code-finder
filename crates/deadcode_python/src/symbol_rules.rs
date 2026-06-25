@@ -36,6 +36,21 @@ pub(super) fn decorator_marks_boundary_function(
     })
 }
 
+pub(super) fn decorator_callable_wrapper_type(
+    module: &str,
+    imports: &[ResolvedImport],
+    rules: &RuleConfig,
+    expr: &ast::Expr,
+    types: &HashMap<String, TypeBinding>,
+) -> Option<String> {
+    rules.decorators.iter().find_map(|rule| {
+        (rule.effect == "wrapWithCallableType"
+            && decorator_matches(rule, expr, module, imports, types))
+        .then(|| rule.callable_type.clone())
+        .flatten()
+    })
+}
+
 fn decorator_matches(
     rule: &crate::config::DecoratorRule,
     expr: &ast::Expr,

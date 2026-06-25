@@ -1,0 +1,13 @@
+{
+  "roots": [{ "path": "pkg", "module": "pkg" }],
+  "entrypoints": ["pkg/main.py"],
+  "rules": {
+    "decorators": [
+      {
+        "function": "pkg.decorators.cache_array",
+        "effect": "wrapWithCallableType",
+        "callableType": "pkg.cache.CallableCache"
+      }
+    ]
+  }
+}

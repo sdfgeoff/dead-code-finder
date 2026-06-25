@@ -88,6 +88,8 @@ pub struct DecoratorRule {
     pub receiver_type: Option<String>,
     #[serde(default)]
     pub methods: Vec<String>,
+    #[serde(default)]
+    pub callable_type: Option<String>,
     pub effect: String,
 }
 
@@ -293,10 +295,20 @@ fn validate_rules(rules: &RuleConfig) -> Result<(), ConfigError> {
         }
         if !matches!(
             decorator.effect.as_str(),
-            "registerDecoratedFunction" | "registerBoundaryFunction"
+            "registerDecoratedFunction" | "registerBoundaryFunction" | "wrapWithCallableType"
         ) {
             return Err(ConfigError::InvalidRule {
                 message: format!("unsupported decorator effect {}", decorator.effect),
+            });
+        }
+        if decorator.effect == "wrapWithCallableType"
+            && decorator
+                .callable_type
+                .as_ref()
+                .is_none_or(|callable_type| callable_type.trim().is_empty())
+        {
+            return Err(ConfigError::InvalidRule {
+                message: "wrapWithCallableType decorator rules require callableType".to_string(),
             });
         }
     }

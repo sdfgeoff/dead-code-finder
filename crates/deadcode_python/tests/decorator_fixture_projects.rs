@@ -29,6 +29,17 @@ fn bare_decorator_rule_registers_function() {
     assert!(symbols.contains(&"pkg.background.DeadWrapperResource.__exit__".to_string()));
 }
 
+#[test]
+fn decorator_factory_callable_wrapper_object_marks_call_live() {
+    let report = analyze_fixture("decorator_factory_callable_wrapper_object");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.cache.CallableCache.__call__".to_string()));
+    assert!(!symbols.contains(&"pkg.cache.CallableCache.helper".to_string()));
+    assert!(symbols.contains(&"pkg.cache.UnusedCallableCache.__call__".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))
