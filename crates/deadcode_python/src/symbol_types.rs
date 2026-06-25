@@ -41,6 +41,7 @@ pub(super) fn type_binding_from_annotation_expr(
         ast::Expr::StringLiteral(string) => {
             type_binding_from_annotation_string(module, imports, string.value.to_str())
         }
+        ast::Expr::NoneLiteral(_) => Some(TypeBinding::erased("None".to_string())),
         _ => type_binding_from_expr(module, imports, expr),
     }
 }

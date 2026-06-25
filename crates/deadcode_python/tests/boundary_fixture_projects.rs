@@ -40,6 +40,17 @@ fn boundary_enum_parameter_marks_all_members() {
     assert!(!symbols.contains(&"pkg.examples.UserTagEnum.ROLE_BETA".to_string()));
 }
 
+#[test]
+fn boundary_models_mark_bare_none_fields_live() {
+    let report = analyze_fixture("boundary_models_mark_bare_none_fields_live");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Payload.absent".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Nested.only_none".to_string()));
+    assert!(symbols.contains(&"pkg.main.DeadPayload.absent".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     analyze_project(&AnalyzeOptions {
         config_path: fixture_path(name).join("dead-code-finder.json"),

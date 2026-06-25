@@ -1,0 +1,13 @@
+{
+  "roots": [{ "path": "pkg", "module": "pkg" }],
+  "entrypoints": ["pkg/main.py"],
+  "rules": {
+    "decorators": [
+      {
+        "receiverType": "pkg.framework.Router",
+        "methods": ["post"],
+        "effect": "registerBoundaryFunction"
+      }
+    ]
+  }
+}
