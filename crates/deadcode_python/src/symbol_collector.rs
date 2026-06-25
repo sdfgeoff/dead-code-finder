@@ -16,6 +16,8 @@ mod symbol_call_args;
 mod symbol_call_references;
 #[path = "symbol_callable_alias.rs"]
 mod symbol_callable_alias;
+#[path = "symbol_class_definition.rs"]
+mod symbol_class_definition;
 #[path = "symbol_comprehension_narrowing.rs"]
 mod symbol_comprehension_narrowing;
 #[path = "symbol_comprehension_typeflow.rs"]
@@ -36,6 +38,8 @@ mod symbol_external;
 mod symbol_external_flow;
 #[path = "symbol_fields.rs"]
 mod symbol_fields;
+#[path = "symbol_function_signature.rs"]
+mod symbol_function_signature;
 #[path = "symbol_generics.rs"]
 mod symbol_generics;
 #[path = "symbol_imports.rs"]
@@ -90,14 +94,12 @@ use ruff_text_size::TextRange;
 use self::symbol_expr::{is_main_guard, target_name};
 use self::symbol_fields::collect_self_assignments;
 use self::symbol_imports::{collect_import, collect_import_from};
-use self::symbol_iteration::bind_collection_unpack_target;
 use self::symbol_members::push_member_reference;
-use self::symbol_metadata::{class_info, function_signature};
+use self::symbol_metadata::class_info;
 use self::symbol_rules::{
     decorator_callable_wrapper_type, decorator_marks_boundary_function,
     decorator_registers_function,
 };
-use self::symbol_types::type_binding_from_annotation_expr;
 use super::{
     AccessKind, CallArgumentType, ClassInfo, FunctionSignature, IndexedSymbol, MemberReference,
     ResolvedImport, SourceLocator, SymbolReference, TypeBinding, UnresolvedReceiver,
@@ -160,13 +162,15 @@ impl SymbolCollector<'_> {
             }
             ast::Stmt::ClassDef(class_def) => {
                 let class_name = class_def.name.as_str();
+                let class_owner = format!("{}.{}", self.module, class_name);
                 self.push_symbol(
-                    format!("{}.{}", self.module, class_name),
+                    class_owner.clone(),
                     class_name,
                     SymbolKind::Class,
                     class_def.range,
                 );
-                self.push_class_info(format!("{}.{}", self.module, class_name), class_def);
+                self.push_class_info(class_owner.clone(), class_def);
+                self.collect_class_definition_references(&class_owner, class_def, module_types);
                 self.collect_class_body(class_name, &class_def.body, module_types);
             }
             ast::Stmt::Import(import) => {
@@ -301,86 +305,6 @@ impl SymbolCollector<'_> {
         ));
     }
 
-    fn push_function_signature(
-        &mut self,
-        function: &str,
-        function_def: &ast::StmtFunctionDef,
-        types: &HashMap<String, TypeBinding>,
-    ) {
-        let mut signature = function_signature(self.module, self.imports, function, function_def);
-        let inferred = self.inferred_function_return(function_def, types);
-        if let (Some(explicit), Some(inferred)) = (&signature.return_type, &inferred) {
-            if explicit.args.is_empty() && self.is_subclass_or_same(&inferred.base, &explicit.base)
-            {
-                signature.concrete_return_type = Some(inferred.clone());
-            }
-        }
-        signature.return_type = match (signature.return_type, inferred) {
-            (None, inferred) => inferred,
-            (Some(explicit), Some(inferred))
-                if is_tuple_binding(&explicit) && is_tuple_binding(&inferred) =>
-            {
-                Some(inferred)
-            }
-            (explicit, _) => explicit,
-        };
-        self.fn_sigs.push(signature);
-    }
-
-    fn inferred_function_return(
-        &self,
-        function_def: &ast::StmtFunctionDef,
-        types: &HashMap<String, TypeBinding>,
-    ) -> Option<TypeBinding> {
-        let mut inferred = None;
-        let mut scoped_types = types.clone();
-        for statement in &function_def.body {
-            match statement {
-                ast::Stmt::Assign(assign) => {
-                    let Some(binding) = self.assignment_value_binding(&assign.value, &scoped_types)
-                    else {
-                        continue;
-                    };
-                    for target in &assign.targets {
-                        if let Some(name) = target_name(target) {
-                            scoped_types.insert(name.to_string(), binding.clone());
-                        } else {
-                            bind_collection_unpack_target(target, &binding, &mut scoped_types);
-                        }
-                    }
-                }
-                ast::Stmt::AnnAssign(assign) => {
-                    let Some(name) = target_name(&assign.target) else {
-                        continue;
-                    };
-                    let Some(annotation) = type_binding_from_annotation_expr(
-                        self.module,
-                        self.imports,
-                        &assign.annotation,
-                    ) else {
-                        continue;
-                    };
-                    scoped_types.insert(name.to_string(), annotation);
-                }
-                ast::Stmt::Return(return_stmt) => {
-                    let Some(value) = &return_stmt.value else {
-                        return None;
-                    };
-                    let binding = self.assignment_value_binding(value, &scoped_types)?;
-                    if inferred
-                        .as_ref()
-                        .is_some_and(|existing: &TypeBinding| existing != &binding)
-                    {
-                        return None;
-                    }
-                    inferred = Some(binding);
-                }
-                _ => {}
-            }
-        }
-        inferred
-    }
-
     fn push_reference(&mut self, from: &str, name: &str, range: TextRange) {
         self.references.push(SymbolReference {
             from: from.to_string(),
@@ -472,72 +396,4 @@ impl SymbolCollector<'_> {
             self.collect_statement_references(owner, statement, &mut types);
         }
     }
-
-    fn collect_function_annotation_references(
-        &mut self,
-        owner: &str,
-        function: &ast::StmtFunctionDef,
-    ) {
-        let types = HashMap::new();
-        for parameter in function.parameters.iter() {
-            if let Some(annotation) = parameter.as_parameter().annotation() {
-                self.collect_expr_references(owner, annotation, &types);
-            }
-        }
-        if let Some(returns) = &function.returns {
-            self.collect_expr_references(owner, returns, &types);
-        }
-    }
-
-    fn function_type_bindings(
-        &self,
-        function: &ast::StmtFunctionDef,
-        class_name: Option<&str>,
-        module_types: &HashMap<String, TypeBinding>,
-    ) -> HashMap<String, TypeBinding> {
-        let mut types = HashMap::new();
-        if let Some(class_name) = class_name {
-            types.insert(
-                "self".to_string(),
-                TypeBinding::erased(format!("{}.{}", self.module, class_name)),
-            );
-            types.insert(
-                "cls".to_string(),
-                TypeBinding::erased(format!("{}.{}", self.module, class_name)),
-            );
-        }
-        for parameter in function.parameters.iter() {
-            let parameter = parameter.as_parameter();
-            if let Some(annotation) = parameter.annotation() {
-                if let Some(type_name) = type_binding_from_annotation(
-                    self.module,
-                    self.imports,
-                    annotation,
-                    module_types,
-                ) {
-                    types.insert(parameter.name.as_str().to_string(), type_name);
-                }
-            }
-        }
-        types
-    }
-}
-
-fn is_tuple_binding(binding: &TypeBinding) -> bool {
-    matches!(binding.base.as_str(), "tuple" | "typing.Tuple" | "Tuple")
-        || binding.base.ends_with(".tuple")
-}
-
-fn type_binding_from_annotation(
-    module: &str,
-    imports: &[ResolvedImport],
-    annotation: &ast::Expr,
-    module_types: &HashMap<String, TypeBinding>,
-) -> Option<TypeBinding> {
-    if let ast::Expr::Name(name) = annotation {
-        if let Some(binding) = module_types.get(name.id.as_str()) {
-            return Some(binding.clone());
-        }
-    }
-    type_binding_from_annotation_expr(module, imports, annotation)
 }

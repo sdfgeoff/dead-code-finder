@@ -164,6 +164,16 @@ fn imported_annotated_union_alias_field_read_marks_member_fields() {
     assert!(symbols.contains(&"pkg.events.SecondEvent.dead_second".to_string()));
 }
 
+#[test]
+fn live_subclass_marks_base_init_subclass_live() {
+    let report = analyze_fixture("live_subclass_marks_base_init_subclass_live");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Base.__init_subclass__".to_string()));
+    assert!(symbols.contains(&"pkg.main.DeadBase.__init_subclass__".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))
