@@ -84,6 +84,23 @@ fn type_adapter_validate_python_returns_generic_arg() {
 }
 
 #[test]
+fn type_adapter_validation_marks_default_and_nested_fields() {
+    let report = analyze_fixture("type_adapter_validation_marks_default_and_nested_fields");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.models.Payload.name".to_string()));
+    assert!(!symbols.contains(&"pkg.models.Payload.s3".to_string()));
+    assert!(!symbols.contains(&"pkg.models.Feature.type".to_string()));
+    assert!(!symbols.contains(&"pkg.models.Feature.id".to_string()));
+    assert!(!symbols.contains(&"pkg.models.Feature.properties".to_string()));
+    assert!(!symbols.contains(&"pkg.models.Feature.geometry".to_string()));
+    assert!(!symbols.contains(&"pkg.models.FeatureCollection.type".to_string()));
+    assert!(!symbols.contains(&"pkg.models.FeatureCollection.features".to_string()));
+    assert!(symbols.contains(&"pkg.models.UnusedPayload.dead".to_string()));
+}
+
+#[test]
 fn list_slice_preserves_collection_type() {
     let report = analyze_fixture("list_slice_preserves_collection_type");
     let symbols = finding_symbols(&report);

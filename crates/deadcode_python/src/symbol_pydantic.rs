@@ -380,7 +380,11 @@ fn collect_class_field_names(
 fn is_collection_type(type_name: &str) -> bool {
     matches!(
         type_name,
-        "list"
+        "dict"
+            | "list"
+            | "collections.abc.Mapping"
+            | "typing.Dict"
+            | "typing.Mapping"
             | "tuple"
             | "set"
             | "frozenset"
@@ -391,7 +395,9 @@ fn is_collection_type(type_name: &str) -> bool {
             | "typing.Optional"
             | "Optional"
             | "types.UnionType"
-    ) || type_name.ends_with(".Sequence")
+    ) || type_name.ends_with(".Dict")
+        || type_name.ends_with(".Mapping")
+        || type_name.ends_with(".Sequence")
         || type_name.ends_with(".Union")
         || type_name.ends_with(".Optional")
 }

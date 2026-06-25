@@ -5,7 +5,7 @@ use crate::symbol_index::TypeBinding;
 pub(super) fn type_var_from_type_argument(annotation: &TypeBinding) -> Option<&str> {
     if !matches!(
         annotation.base.as_str(),
-        "typing.Type" | "typing_extensions.Type" | "Type"
+        "type" | "typing.Type" | "typing_extensions.Type" | "Type"
     ) && !annotation.base.ends_with(".Type")
     {
         return None;
@@ -16,7 +16,7 @@ pub(super) fn type_var_from_type_argument(annotation: &TypeBinding) -> Option<&s
 pub(super) fn type_object_arg(binding: &TypeBinding) -> Option<TypeBinding> {
     if !matches!(
         binding.base.as_str(),
-        "typing.Type" | "typing_extensions.Type" | "Type"
+        "type" | "typing.Type" | "typing_extensions.Type" | "Type"
     ) && !binding.base.ends_with(".Type")
     {
         return None;
