@@ -5,8 +5,10 @@ use ruff_python_ast as ast;
 use super::symbol_aliases::expand_alias_binding;
 use super::symbol_branch_narrowing::{merge_completed_branch_types, suite_returns};
 use super::symbol_expr::target_name;
+use super::symbol_generics::member_reference_target_bases;
 use super::symbol_imports::{collect_import, collect_import_from};
 use super::symbol_iteration::bind_collection_unpack_target;
+use super::symbol_members::push_member_reference;
 use super::symbol_types::type_binding_from_expr;
 use super::SymbolCollector;
 use crate::symbol_index::{AccessKind, ImportTarget, TypeBinding};
@@ -296,6 +298,7 @@ impl SymbolCollector<'_> {
                 self.collect_expr_references(owner, &unary_op.operand, types);
             }
             ast::Expr::Subscript(subscript) => {
+                self.collect_getitem_reference(owner, subscript, types);
                 self.collect_expr_references(owner, &subscript.value, types);
                 self.collect_expr_references(owner, &subscript.slice, types);
             }
@@ -356,6 +359,28 @@ impl SymbolCollector<'_> {
             }
             ast::Expr::FString(f_string) => self.collect_fstring_references(owner, f_string, types),
             _ => {}
+        }
+    }
+
+    fn collect_getitem_reference(
+        &mut self,
+        owner: &str,
+        subscript: &ast::ExprSubscript,
+        types: &HashMap<String, TypeBinding>,
+    ) {
+        let Some(receiver_type) = self.expression_flow_binding(&subscript.value, types) else {
+            return;
+        };
+        for base in member_reference_target_bases(&receiver_type) {
+            push_member_reference(
+                self.member_refs,
+                self.locator,
+                self.file,
+                owner,
+                format!("{base}.__getitem__"),
+                AccessKind::Call,
+                subscript.range,
+            );
         }
     }
 

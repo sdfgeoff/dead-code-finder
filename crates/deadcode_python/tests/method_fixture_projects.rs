@@ -126,6 +126,17 @@ fn init_self_field_coalesced_constructor() {
     assert!(symbols.contains(&"pkg.main.Feature.unused".to_string()));
 }
 
+#[test]
+fn union_subscript_uses_getitem_return_type() {
+    let report = analyze_fixture("union_subscript_uses_getitem_return_type");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.CompatWorkbook.__getitem__".to_string()));
+    assert!(!symbols.contains(&"pkg.main.CompatSheet.cell".to_string()));
+    assert!(!symbols.contains(&"pkg.main.CompatCell.value".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))

@@ -8,9 +8,7 @@ use super::symbol_branch_types::{
     optional_list_or_empty_list_type, optional_list_with_empty_list_type,
 };
 use super::symbol_callable_alias::callable_alias_target;
-use super::symbol_generics::{
-    collection_item_type, expr_type, field_read_type, field_type_for_receiver,
-};
+use super::symbol_generics::{expr_type, field_read_type, field_type_for_receiver};
 use super::symbol_mapping_types::is_mapping_collection;
 use super::symbol_rules::{callable_identity, constructor_binding, factory_return_binding};
 use super::symbol_types::type_binding_from_expr;
@@ -315,22 +313,6 @@ impl SymbolCollector<'_> {
             .or_else(|| self.generator_expression_flow_binding(expr, types))
             .or_else(|| self.subscript_flow_binding(expr, types))
             .or_else(|| expr_type(self.available_classes, expr, types))
-    }
-
-    fn subscript_flow_binding(
-        &self,
-        expr: &ast::Expr,
-        types: &HashMap<String, TypeBinding>,
-    ) -> Option<TypeBinding> {
-        let ast::Expr::Subscript(subscript) = expr else {
-            return None;
-        };
-        let collection_type = self.expression_flow_binding(&subscript.value, types)?;
-        if matches!(subscript.slice.as_ref(), ast::Expr::Slice(_)) {
-            Some(collection_type)
-        } else {
-            collection_item_type(&collection_type)
-        }
     }
 
     fn tuple_literal_flow_binding(
