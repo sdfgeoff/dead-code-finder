@@ -160,6 +160,14 @@ impl SymbolCollector<'_> {
                     self.collect_expr_references(owner, msg, types);
                 }
             }
+            ast::Stmt::Raise(raise_stmt) => {
+                if let Some(exc) = &raise_stmt.exc {
+                    self.collect_expr_references(owner, exc, types);
+                }
+                if let Some(cause) = &raise_stmt.cause {
+                    self.collect_expr_references(owner, cause, types);
+                }
+            }
             ast::Stmt::Try(try_stmt) => {
                 for nested in &try_stmt.body {
                     self.collect_statement_references(owner, nested, types);
