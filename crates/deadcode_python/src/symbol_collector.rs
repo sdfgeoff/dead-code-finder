@@ -72,6 +72,8 @@ mod symbol_typeflow;
 mod symbol_types;
 #[path = "symbol_typevars.rs"]
 mod symbol_typevars;
+#[path = "symbol_validated_returns.rs"]
+mod symbol_validated_returns;
 #[path = "symbol_value_bindings.rs"]
 mod symbol_value_bindings;
 

@@ -15,7 +15,8 @@ use super::symbol_mapping_types::is_mapping_collection;
 use super::symbol_rules::{callable_identity, constructor_binding, factory_return_binding};
 use super::symbol_types::type_binding_from_expr;
 use super::symbol_typevars::{
-    collect_type_var_substitutions, substitute_type_vars, type_var_from_type_argument,
+    collect_type_var_substitutions, substitute_type_vars, type_object_arg,
+    type_var_from_type_argument,
 };
 use super::SymbolCollector;
 use crate::symbol_index::{FunctionSignature, ImportTarget, TypeBinding};
@@ -200,7 +201,7 @@ impl SymbolCollector<'_> {
             .then_some(receiver_type)
     }
 
-    fn resolved_call_target(
+    pub(super) fn resolved_call_target(
         &self,
         expr: &ast::Expr,
         types: &HashMap<String, TypeBinding>,
@@ -248,6 +249,7 @@ impl SymbolCollector<'_> {
                 .or_else(|| self.external_import_binding(receiver.id.as_str())),
             expr => self
                 .local_call_return_binding(expr, types)
+                .or_else(|| self.pydantic_type_adapter_binding(expr, types))
                 .or_else(|| constructor_binding(self.module, self.imports, self.rules, expr))
                 .or_else(|| field_read_type(self.available_classes, expr, types))
                 .or_else(|| expr_type(self.available_classes, expr, types)),
@@ -412,7 +414,7 @@ impl SymbolCollector<'_> {
             .any(|base| base.base == base_type || self.is_subclass(&base.base, base_type, visited))
     }
 
-    fn type_var_substitutions(
+    pub(super) fn type_var_substitutions(
         &self,
         signature: &FunctionSignature,
         call: &ast::ExprCall,
@@ -470,7 +472,10 @@ impl SymbolCollector<'_> {
             return;
         };
         if let Some(type_var) = type_var_from_type_argument(annotation) {
-            substitutions.insert(type_var.to_string(), argument_type);
+            substitutions.insert(
+                type_var.to_string(),
+                type_object_arg(&argument_type).unwrap_or(argument_type),
+            );
             return;
         }
         collect_type_var_substitutions(annotation, &argument_type, substitutions);

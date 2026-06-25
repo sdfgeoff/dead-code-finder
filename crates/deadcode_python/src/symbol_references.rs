@@ -57,10 +57,12 @@ impl SymbolCollector<'_> {
             }
             ast::Stmt::Return(ret) => {
                 if let Some(value) = &ret.value {
+                    self.record_validated_return_from_expr(owner, value, types);
                     self.collect_expr_references(owner, value, types);
                 }
             }
             ast::Stmt::Assign(assign) => {
+                let validated_type = self.validated_assignment_binding(&assign.value, types);
                 self.collect_expr_references(owner, &assign.value, types);
                 for target in &assign.targets {
                     self.collect_assignment_target(owner, target, types);
@@ -70,6 +72,7 @@ impl SymbolCollector<'_> {
                     for target in &assign.targets {
                         if let Some(name) = target_name(target) {
                             types.insert(name.to_string(), type_name.clone());
+                            self.bind_validated_assignment(target, validated_type.as_ref(), types);
                             if owner == self.module {
                                 self.push_value_binding(name, type_name.clone());
                             }
@@ -94,7 +97,9 @@ impl SymbolCollector<'_> {
                     self.collect_assignment_target(owner, &assign.target, types);
                 }
                 if let Some(value) = &assign.value {
+                    let validated_type = self.validated_assignment_binding(value, types);
                     self.collect_expr_references(owner, value, types);
+                    self.bind_validated_assignment(&assign.target, validated_type.as_ref(), types);
                 }
             }
             ast::Stmt::AugAssign(assign) => {
@@ -318,6 +323,9 @@ impl SymbolCollector<'_> {
         }
         self.collect_factory_model_surfaces(owner, call, types);
         self.collect_pydantic_validation_field_references(owner, call, types);
+        for binding in self.local_call_validated_return_bindings(call, types) {
+            self.collect_validated_type_references(owner, &binding, call.range(), &mut Vec::new());
+        }
         for (position, arg) in call.arguments.args.iter().enumerate() {
             let concrete_types = self.concrete_argument_types(arg, types);
             for concrete_type in concrete_types {

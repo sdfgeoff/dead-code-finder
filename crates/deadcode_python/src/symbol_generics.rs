@@ -299,7 +299,7 @@ pub(super) fn substitute_type_params(
     if let Some(position) = class_info
         .type_params
         .iter()
-        .position(|candidate| candidate == &binding.base)
+        .position(|candidate| same_type_param(candidate, &binding.base))
     {
         return receiver_type
             .args
@@ -316,6 +316,10 @@ pub(super) fn substitute_type_params(
             .collect(),
         external: binding.external,
     }
+}
+
+fn same_type_param(candidate: &str, binding: &str) -> bool {
+    candidate == binding || candidate.rsplit('.').next() == binding.rsplit('.').next()
 }
 
 fn is_iterable_collection(type_name: &str) -> bool {

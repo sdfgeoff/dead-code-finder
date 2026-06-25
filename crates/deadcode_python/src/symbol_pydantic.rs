@@ -103,6 +103,35 @@ impl SymbolCollector<'_> {
         );
     }
 
+    pub(super) fn record_pydantic_validated_return_type(
+        &mut self,
+        owner: &str,
+        value: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) {
+        let Some(binding) = self.pydantic_validation_call_binding(value, types) else {
+            return;
+        };
+        self.record_pydantic_validated_return_binding(owner, binding);
+    }
+
+    pub(super) fn record_pydantic_validated_return_binding(
+        &mut self,
+        owner: &str,
+        binding: TypeBinding,
+    ) {
+        let Some(signature) = self
+            .fn_sigs
+            .iter_mut()
+            .find(|signature| signature.function == owner)
+        else {
+            return;
+        };
+        if !signature.validated_return_types.contains(&binding) {
+            signature.validated_return_types.push(binding);
+        }
+    }
+
     pub(super) fn collect_boundary_function_model_references(
         &mut self,
         owner: &str,
@@ -129,7 +158,7 @@ impl SymbolCollector<'_> {
         }
     }
 
-    fn collect_validated_type_references(
+    pub(super) fn collect_validated_type_references(
         &mut self,
         owner: &str,
         binding: &TypeBinding,

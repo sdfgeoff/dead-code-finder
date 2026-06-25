@@ -16,7 +16,7 @@ pub(super) fn class_info(
     class_def: &ast::StmtClassDef,
     values: &[ValueBinding],
 ) -> ClassInfo {
-    let type_params = class_type_params(class_def);
+    let type_params = class_type_params(module, imports, class_def);
     let bases = class_def
         .arguments
         .as_ref()
@@ -63,10 +63,15 @@ pub(super) fn function_signature(
             .returns
             .as_ref()
             .and_then(|returns| type_binding_from_annotation_expr(module, imports, returns)),
+        validated_return_types: Vec::new(),
     }
 }
 
-fn class_type_params(class_def: &ast::StmtClassDef) -> Vec<String> {
+fn class_type_params(
+    module: &str,
+    imports: &[ResolvedImport],
+    class_def: &ast::StmtClassDef,
+) -> Vec<String> {
     let inline_params: Vec<String> = class_def
         .type_params
         .as_deref()
@@ -91,28 +96,35 @@ fn class_type_params(class_def: &ast::StmtClassDef) -> Vec<String> {
                 let ast::Expr::Subscript(subscript) = base else {
                     return None;
                 };
-                let ast::Expr::Name(name) = subscript.value.as_ref() else {
-                    return None;
-                };
-                (name.id.as_str() == "Generic")
-                    .then(|| type_param_names_from_expr(&subscript.slice))
+                let base = type_binding_from_expr(module, imports, &subscript.value)?;
+                is_generic_base(&base.base)
+                    .then(|| type_param_names_from_expr(module, imports, &subscript.slice))
             })
         })
         .unwrap_or_default()
 }
 
-fn type_param_names_from_expr(expr: &ast::Expr) -> Vec<String> {
+fn type_param_names_from_expr(
+    module: &str,
+    imports: &[ResolvedImport],
+    expr: &ast::Expr,
+) -> Vec<String> {
     match expr {
-        ast::Expr::Tuple(tuple) => tuple.elts.iter().filter_map(type_param_name).collect(),
-        expr => type_param_name(expr).into_iter().collect(),
+        ast::Expr::Tuple(tuple) => tuple
+            .elts
+            .iter()
+            .filter_map(|expr| type_param_name(module, imports, expr))
+            .collect(),
+        expr => type_param_name(module, imports, expr).into_iter().collect(),
     }
 }
 
-fn type_param_name(expr: &ast::Expr) -> Option<String> {
-    match expr {
-        ast::Expr::Name(name) => Some(name.id.as_str().to_string()),
-        _ => None,
-    }
+fn type_param_name(module: &str, imports: &[ResolvedImport], expr: &ast::Expr) -> Option<String> {
+    type_binding_from_expr(module, imports, expr).map(|binding| binding.base)
+}
+
+fn is_generic_base(type_name: &str) -> bool {
+    matches!(type_name, "typing.Generic" | "Generic") || type_name.ends_with(".Generic")
 }
 
 fn class_fields(
@@ -361,13 +373,28 @@ fn field_annotation(
 ) -> Option<FieldAnnotation> {
     let mut binding = type_binding_from_annotation_expr(module, imports, annotation)?;
     rewrite_type_params(module, &mut binding, type_params);
-    binding = expand_alias_binding(&binding, values);
-    rewrite_type_params(module, &mut binding, type_params);
+    if !contains_type_param(&binding, type_params) {
+        binding = expand_alias_binding(&binding, values);
+        rewrite_type_params(module, &mut binding, type_params);
+    }
     Some(FieldAnnotation::Concrete(binding))
+}
+
+fn contains_type_param(binding: &TypeBinding, type_params: &[String]) -> bool {
+    type_params
+        .iter()
+        .any(|type_param| binding.base == *type_param)
+        || binding
+            .args
+            .iter()
+            .any(|arg| contains_type_param(arg, type_params))
 }
 
 fn rewrite_type_params(module: &str, binding: &mut TypeBinding, type_params: &[String]) {
     for type_param in type_params {
+        if binding.base == *type_param {
+            break;
+        }
         if binding.base == format!("{module}.{type_param}") {
             binding.base = type_param.clone();
             break;

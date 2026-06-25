@@ -13,6 +13,17 @@ pub(super) fn type_var_from_type_argument(annotation: &TypeBinding) -> Option<&s
     annotation.args.first().map(|arg| arg.base.as_str())
 }
 
+pub(super) fn type_object_arg(binding: &TypeBinding) -> Option<TypeBinding> {
+    if !matches!(
+        binding.base.as_str(),
+        "typing.Type" | "typing_extensions.Type" | "Type"
+    ) && !binding.base.ends_with(".Type")
+    {
+        return None;
+    }
+    binding.args.first().cloned()
+}
+
 pub(super) fn collect_type_var_substitutions(
     pattern: &TypeBinding,
     value: &TypeBinding,
