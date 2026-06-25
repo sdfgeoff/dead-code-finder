@@ -87,17 +87,17 @@ use self::symbol_expr::{is_main_guard, target_name};
 use self::symbol_fields::collect_self_assignments;
 use self::symbol_imports::{collect_import, collect_import_from};
 use self::symbol_iteration::bind_collection_unpack_target;
-use self::symbol_metadata::{class_info, function_signature};
 use self::symbol_members::push_member_reference;
+use self::symbol_metadata::{class_info, function_signature};
 use self::symbol_rules::{
-    decorator_callable_wrapper_type, decorator_marks_boundary_function, decorator_registers_function,
+    decorator_callable_wrapper_type, decorator_marks_boundary_function,
+    decorator_registers_function,
 };
 use self::symbol_types::type_binding_from_annotation_expr;
 use super::{
     AccessKind, CallArgumentType, ClassInfo, FunctionSignature, IndexedSymbol, MemberReference,
     ResolvedImport, SourceLocator, SymbolReference, TypeBinding, UnresolvedReceiver,
-    UnsupportedExpansion,
-    ValueBinding,
+    UnsupportedExpansion, ValueBinding,
 };
 use crate::config::RuleConfig;
 use crate::symbol_index::ReexportMap;
@@ -305,6 +305,12 @@ impl SymbolCollector<'_> {
     ) {
         let mut signature = function_signature(self.module, self.imports, function, function_def);
         let inferred = self.inferred_function_return(function_def, types);
+        if let (Some(explicit), Some(inferred)) = (&signature.return_type, &inferred) {
+            if explicit.args.is_empty() && self.is_subclass_or_same(&inferred.base, &explicit.base)
+            {
+                signature.concrete_return_type = Some(inferred.clone());
+            }
+        }
         signature.return_type = match (signature.return_type, inferred) {
             (None, inferred) => inferred,
             (Some(explicit), Some(inferred))

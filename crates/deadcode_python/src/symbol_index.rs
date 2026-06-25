@@ -105,6 +105,7 @@ pub struct FunctionSignature {
     pub function: String,
     pub parameters: Vec<FunctionParameter>,
     pub return_type: Option<TypeBinding>,
+    pub concrete_return_type: Option<TypeBinding>,
     pub validated_return_types: Vec<TypeBinding>,
 }
 

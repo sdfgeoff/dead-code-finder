@@ -106,7 +106,10 @@ impl SymbolCollector<'_> {
             .available_fn_sigs
             .iter()
             .find(|signature| signature.function == callee)?;
-        let return_type = signature.return_type.clone()?;
+        let return_type = signature
+            .concrete_return_type
+            .clone()
+            .or_else(|| signature.return_type.clone())?;
         let substitutions = self.type_var_substitutions(signature, call, types);
         Some(expand_alias_binding(
             &substitute_type_vars(&return_type, &substitutions),
@@ -392,7 +395,7 @@ impl SymbolCollector<'_> {
         })
     }
 
-    fn is_subclass_or_same(&self, concrete_type: &str, base_type: &str) -> bool {
+    pub(super) fn is_subclass_or_same(&self, concrete_type: &str, base_type: &str) -> bool {
         concrete_type == base_type || self.is_subclass(concrete_type, base_type, &mut Vec::new())
     }
 

@@ -63,6 +63,7 @@ pub(super) fn function_signature(
             .returns
             .as_ref()
             .and_then(|returns| type_binding_from_annotation_expr(module, imports, returns)),
+        concrete_return_type: None,
         validated_return_types: Vec::new(),
     }
 }

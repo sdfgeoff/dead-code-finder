@@ -26,7 +26,7 @@ impl SymbolCollector<'_> {
         constructor_binding(self.module, self.imports, self.rules, arg)
             .or_else(|| self.class_object_argument_binding(arg))
             .or_else(|| self.assignment_value_binding(arg, types))
-            .map(|binding| vec![binding.base])
+            .map(|binding| concrete_types_from_binding(&binding))
             .unwrap_or_default()
     }
 
@@ -45,4 +45,36 @@ impl SymbolCollector<'_> {
             _ => None,
         }
     }
+}
+
+fn concrete_types_from_binding(binding: &TypeBinding) -> Vec<String> {
+    if matches!(binding.base.as_str(), "typing.Union" | "types.UnionType") {
+        return binding
+            .args
+            .iter()
+            .flat_map(concrete_types_from_binding)
+            .collect();
+    }
+    if is_collection_type(&binding.base) {
+        return binding
+            .args
+            .first()
+            .map(concrete_types_from_binding)
+            .unwrap_or_default();
+    }
+    vec![binding.base.clone()]
+}
+
+fn is_collection_type(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "list"
+            | "set"
+            | "tuple"
+            | "typing.List"
+            | "typing.Set"
+            | "typing.Tuple"
+            | "typing.Sequence"
+            | "collections.abc.Sequence"
+    )
 }

@@ -105,15 +105,35 @@ impl SymbolCollector<'_> {
         let mut item_type = None;
         for element in elements {
             let element_type = self.expression_flow_binding(element, types)?;
-            if item_type
-                .as_ref()
-                .is_some_and(|existing: &TypeBinding| existing != &element_type)
-            {
-                return None;
-            }
-            item_type = Some(element_type);
+            item_type = Some(match item_type {
+                None => element_type,
+                Some(existing) => merge_item_types(existing, element_type),
+            });
         }
         item_type
+    }
+}
+
+fn merge_item_types(existing: TypeBinding, next: TypeBinding) -> TypeBinding {
+    if existing == next {
+        return existing;
+    }
+    let mut args = union_args(existing);
+    if !args.iter().any(|arg| arg == &next) {
+        args.push(next);
+    }
+    TypeBinding {
+        base: "typing.Union".to_string(),
+        args,
+        external: false,
+    }
+}
+
+fn union_args(binding: TypeBinding) -> Vec<TypeBinding> {
+    if matches!(binding.base.as_str(), "typing.Union" | "types.UnionType") {
+        binding.args
+    } else {
+        vec![binding]
     }
 }
 
