@@ -151,6 +151,19 @@ fn reexported_enum_iteration_marks_members() {
     assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.ACCOUNT_HOLDER".to_string()));
 }
 
+#[test]
+fn imported_annotated_union_alias_field_read_marks_member_fields() {
+    let report = analyze_fixture("imported_annotated_union_alias_field_read");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.events.FirstEvent.event_type".to_string()));
+    assert!(!symbols.contains(&"pkg.events.SecondEvent.event_type".to_string()));
+    assert!(symbols.contains(&"pkg.events.FirstEvent.dead_first".to_string()));
+    assert!(symbols.contains(&"pkg.events.SecondEvent.payload".to_string()));
+    assert!(symbols.contains(&"pkg.events.SecondEvent.dead_second".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))

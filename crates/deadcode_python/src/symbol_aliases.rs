@@ -44,7 +44,7 @@ fn unwrap_annotated_alias(binding: TypeBinding) -> TypeBinding {
 }
 
 pub(super) fn expand_alias_binding(binding: &TypeBinding, values: &[ValueBinding]) -> TypeBinding {
-    expand_alias_binding_inner(binding, values, &mut Vec::new())
+    unwrap_annotated_binding(expand_alias_binding_inner(binding, values, &mut Vec::new()))
 }
 
 fn expand_alias_binding_inner(
@@ -68,6 +68,30 @@ fn expand_alias_binding_inner(
             .args
             .iter()
             .map(|arg| expand_alias_binding_inner(arg, values, visited))
+            .collect(),
+        external: binding.external,
+    }
+}
+
+fn unwrap_annotated_binding(binding: TypeBinding) -> TypeBinding {
+    if matches!(
+        binding.base.as_str(),
+        "typing.Annotated" | "typing_extensions.Annotated" | "Annotated"
+    ) || binding.base.ends_with(".Annotated")
+    {
+        return binding
+            .args
+            .into_iter()
+            .next()
+            .map(unwrap_annotated_binding)
+            .unwrap_or_else(|| TypeBinding::erased("object".to_string()));
+    }
+    TypeBinding {
+        base: binding.base,
+        args: binding
+            .args
+            .into_iter()
+            .map(unwrap_annotated_binding)
             .collect(),
         external: binding.external,
     }

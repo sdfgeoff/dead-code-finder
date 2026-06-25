@@ -249,8 +249,10 @@ fn is_typing_container(type_name: &str) -> bool {
             | "typing.Set"
             | "typing.Tuple"
             | "typing.Type"
+            | "typing.Annotated"
+            | "typing_extensions.Annotated"
             | "typing_extensions.Type"
-    )
+    ) || type_name.ends_with(".Annotated")
 }
 
 fn dotted_expr(expr: &ast::ExprAttribute) -> Option<String> {
