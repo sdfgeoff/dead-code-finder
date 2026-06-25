@@ -37,6 +37,7 @@ impl SymbolCollector<'_> {
         for_stmt: &ast::StmtFor,
         types: &mut HashMap<String, TypeBinding>,
     ) {
+        self.collect_enum_iteration_references(owner, &for_stmt.iter);
         self.collect_expr_references(owner, &for_stmt.iter, types);
         self.collect_assignment_target(owner, &for_stmt.target, types);
         let item_type = self.iteration_item_type(&for_stmt.iter, types);

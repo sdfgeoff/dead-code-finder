@@ -137,6 +137,20 @@ fn union_subscript_uses_getitem_return_type() {
     assert!(!symbols.contains(&"pkg.main.CompatCell.value".to_string()));
 }
 
+#[test]
+fn reexported_enum_iteration_marks_members() {
+    let report = analyze_fixture("reexported_enum_iteration_marks_members");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.SUBMITTER".to_string()));
+    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.CONTACT".to_string()));
+    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.EDITOR".to_string()));
+    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.TASK_EDITOR".to_string()));
+    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.INVOICE_RECIPIENT".to_string()));
+    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.ACCOUNT_HOLDER".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))

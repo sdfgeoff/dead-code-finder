@@ -30,6 +30,16 @@ fn call_rule_marks_class_argument_member_live() {
     assert!(symbols.contains(&"pkg.middleware.UnusedMiddleware.dispatch".to_string()));
 }
 
+#[test]
+fn boundary_enum_parameter_marks_all_members() {
+    let report = analyze_fixture("boundary_enum_parameter_marks_all_members");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.examples.UserTagEnum.ROLE_ALPHA".to_string()));
+    assert!(!symbols.contains(&"pkg.examples.UserTagEnum.ROLE_BETA".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     analyze_project(&AnalyzeOptions {
         config_path: fixture_path(name).join("dead-code-finder.json"),

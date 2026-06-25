@@ -9,7 +9,6 @@ use super::symbol_members::push_member_reference;
 use super::symbol_rules::callable_identity;
 use super::symbol_types::{type_binding_from_annotation_expr, type_binding_from_expr};
 use super::SymbolCollector;
-use deadcode_core::SymbolKind;
 
 use crate::symbol_index::{AccessKind, ClassInfo, FieldAnnotation, TypeBinding};
 
@@ -285,15 +284,11 @@ impl SymbolCollector<'_> {
     }
 
     fn local_class_attribute_names(&self, class_name: &str) -> Vec<String> {
-        let prefix = format!("{class_name}.");
-        self.symbols
+        self.available_classes
             .iter()
-            .filter(|symbol| {
-                symbol.kind == SymbolKind::Attribute && symbol.qualified_name.starts_with(&prefix)
-            })
-            .filter_map(|symbol| symbol.qualified_name.strip_prefix(&prefix))
-            .map(ToString::to_string)
-            .collect()
+            .find(|class_info| class_info.class == class_name)
+            .map(|class_info| class_info.attributes.clone())
+            .unwrap_or_default()
     }
 
     fn class_derives_from_inner(

@@ -29,11 +29,13 @@ pub(super) fn class_info(
         })
         .unwrap_or_default();
     let fields = class_fields(module, imports, class_def, &type_params, values);
+    let attributes = class_attributes(class_def);
     ClassInfo {
         class,
         bases,
         type_params,
         fields,
+        attributes,
     }
 }
 
@@ -162,6 +164,33 @@ fn class_fields(
         }
     }
     fields
+}
+
+fn class_attributes(class_def: &ast::StmtClassDef) -> Vec<String> {
+    let mut attributes = Vec::new();
+    for statement in &class_def.body {
+        match statement {
+            ast::Stmt::Assign(assign) => {
+                for target in &assign.targets {
+                    push_attribute_name(target, &mut attributes);
+                }
+            }
+            ast::Stmt::AnnAssign(assign) => {
+                push_attribute_name(&assign.target, &mut attributes);
+            }
+            _ => {}
+        }
+    }
+    attributes
+}
+
+fn push_attribute_name(expr: &ast::Expr, attributes: &mut Vec<String>) {
+    let Some(name) = target_name(expr) else {
+        return;
+    };
+    if !attributes.iter().any(|existing| existing == name) {
+        attributes.push(name.to_string());
+    }
 }
 
 fn property_fields(

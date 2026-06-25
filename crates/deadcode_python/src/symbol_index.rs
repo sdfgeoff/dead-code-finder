@@ -65,6 +65,7 @@ pub struct ClassInfo {
     pub bases: Vec<TypeBinding>,
     pub type_params: Vec<String>,
     pub fields: Vec<ClassFieldInfo>,
+    pub attributes: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

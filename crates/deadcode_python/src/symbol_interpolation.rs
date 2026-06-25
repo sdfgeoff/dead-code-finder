@@ -17,6 +17,7 @@ impl SymbolCollector<'_> {
     ) {
         let mut scoped_types = types.clone();
         for generator in &list_comp.generators {
+            self.collect_enum_iteration_references(owner, &generator.iter);
             self.collect_expr_references(owner, &generator.iter, &scoped_types);
             if let Some(item_type) = self.iteration_item_type(&generator.iter, &scoped_types) {
                 bind_comprehension_target(&generator.target, &item_type, &mut scoped_types);
@@ -37,6 +38,7 @@ impl SymbolCollector<'_> {
     ) {
         let mut scoped_types = types.clone();
         for generator in &dict_comp.generators {
+            self.collect_enum_iteration_references(owner, &generator.iter);
             self.collect_expr_references(owner, &generator.iter, &scoped_types);
             if let Some(item_type) = self.iteration_item_type(&generator.iter, &scoped_types) {
                 bind_comprehension_target(&generator.target, &item_type, &mut scoped_types);
@@ -58,6 +60,7 @@ impl SymbolCollector<'_> {
     ) {
         let mut scoped_types = types.clone();
         for generator in &generator_exp.generators {
+            self.collect_enum_iteration_references(owner, &generator.iter);
             self.collect_expr_references(owner, &generator.iter, &scoped_types);
             if let Some(item_type) = self.iteration_item_type(&generator.iter, &scoped_types) {
                 bind_comprehension_target(&generator.target, &item_type, &mut scoped_types);
