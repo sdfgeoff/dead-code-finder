@@ -18,6 +18,14 @@ fn json_branch_mapping_get_resolves_receiver() {
     assert!(report.diagnostics.is_empty());
 }
 
+#[test]
+fn external_callable_and_inspect_stack_flow_suppress_receiver_warnings() {
+    let report = analyze_fixture("external_callable_and_inspect_stack_flow");
+
+    assert!(report.findings.is_empty());
+    assert!(report.diagnostics.is_empty());
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     analyze_project(&AnalyzeOptions {
         config_path: fixture_path(name).join("dead-code-finder.json"),

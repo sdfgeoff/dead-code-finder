@@ -19,6 +19,17 @@ impl SymbolCollector<'_> {
             }
             return None;
         };
+        if let ast::Expr::Name(name) = call.func.as_ref() {
+            let callee_type = types
+                .get(name.id.as_str())
+                .cloned()
+                .or_else(|| self.external_import_binding(name.id.as_str()))?;
+            return callee_type.external.then(|| TypeBinding {
+                base: format!("{}.__call__", callee_type.base),
+                args: Vec::new(),
+                external: true,
+            });
+        }
         let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
             return None;
         };
