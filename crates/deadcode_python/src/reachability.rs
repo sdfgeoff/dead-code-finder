@@ -5,7 +5,7 @@ use deadcode_core::{Diagnostic, Finding, Severity, SymbolKind};
 use crate::symbol_index::{ClassInfo, FunctionSignature, ImportTarget, ModuleIndex, SymbolIndex};
 
 use self::reachability_class_metadata::{
-    mark_live_class_creation_metadata, mark_symbol_owners_live,
+    mark_configured_live_class_surfaces, mark_live_class_creation_metadata, mark_symbol_owners_live,
 };
 use self::reachability_concrete_flow::{concrete_flow_base, concrete_flow_candidates};
 
@@ -256,6 +256,12 @@ fn compute_live_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<Strin
 
     mark_symbol_owners_live(&mut live, &symbol_kinds);
     mark_live_class_creation_metadata(&mut live, &symbol_kinds);
+    mark_configured_live_class_surfaces(
+        &mut live,
+        &symbol_kinds,
+        &class_map,
+        &index.class_surfaces,
+    );
     live
 }
 

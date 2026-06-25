@@ -1,0 +1,17 @@
+{
+  "roots": [
+    {
+      "path": "pkg",
+      "module": "pkg"
+    }
+  ],
+  "entrypoints": ["pkg/main.py"],
+  "rules": {
+    "classSurfaces": [
+      {
+        "base": "pkg.orm.Base",
+        "effect": "markClassAttributes"
+      }
+    ]
+  }
+}

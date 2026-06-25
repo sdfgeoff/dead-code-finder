@@ -20,6 +20,7 @@ pub struct SymbolIndex {
     pub parse_diagnostics: Vec<ParseDiagnostic>,
     pub include_tests: bool,
     pub include_weak: bool,
+    pub class_surfaces: Vec<String>,
     pub route_globs: Vec<ResolvedRouteGlob>,
     known_modules: HashSet<String>,
 }
@@ -243,6 +244,12 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
     let mut index = SymbolIndex::default();
     index.include_tests = config.include_tests;
     index.include_weak = !config.weak_entrypoints.is_empty();
+    index.class_surfaces = config
+        .rules
+        .class_surfaces
+        .iter()
+        .map(|rule| rule.base.clone())
+        .collect();
     let mut project_files = Vec::new();
 
     for root in &config.roots {
