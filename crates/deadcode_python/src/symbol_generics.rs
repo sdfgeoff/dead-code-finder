@@ -8,6 +8,7 @@ use super::symbol_mapping_types::{
     is_mapping_collection, mapping_items_call_type, mapping_value_call_type,
     mapping_values_call_type,
 };
+use super::symbol_unions::{flattened_union_members, is_none_type, is_union_type};
 use crate::symbol_index::{ClassInfo, FieldAnnotation, TypeBinding};
 
 pub(super) fn field_read_type(
@@ -49,11 +50,10 @@ fn union_field_read_type(
     if !is_union_type(&receiver_type.base) {
         return None;
     }
-    receiver_type
-        .args
-        .iter()
+    flattened_union_members(receiver_type)
+        .into_iter()
         .filter(|arg| !is_none_type(&arg.base))
-        .find_map(|arg| field_type_for_class(classes, arg, field_name))
+        .find_map(|arg| field_type_for_class(classes, &arg, field_name))
 }
 
 fn field_type_for_class(
@@ -283,11 +283,10 @@ pub(super) fn member_reference_target_bases(receiver_type: &TypeBinding) -> Vec<
     if !is_union_type(&receiver_type.base) {
         return vec![receiver_type.base.clone()];
     }
-    receiver_type
-        .args
-        .iter()
+    flattened_union_members(receiver_type)
+        .into_iter()
         .filter(|arg| !arg.external && !is_none_type(&arg.base))
-        .map(|arg| arg.base.clone())
+        .map(|arg| arg.base)
         .collect()
 }
 
@@ -343,19 +342,6 @@ fn is_iterable_collection(type_name: &str) -> bool {
     ) || type_name.ends_with(".list")
         || type_name.ends_with(".set")
         || type_name.ends_with(".tuple")
-}
-
-fn is_union_type(type_name: &str) -> bool {
-    matches!(
-        type_name,
-        "typing.Union" | "types.UnionType" | "typing.Optional" | "Optional"
-    )
-}
-
-fn is_none_type(type_name: &str) -> bool {
-    matches!(type_name, "None" | "builtins.None")
-        || type_name.ends_with(".None")
-        || type_name.ends_with(".NoneType")
 }
 
 pub(super) fn collection_item_type(collection_type: &TypeBinding) -> Option<TypeBinding> {
