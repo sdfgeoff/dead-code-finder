@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ruff_python_ast as ast;
 use ruff_text_size::Ranged;
@@ -59,7 +59,15 @@ impl SymbolCollector<'_> {
         for binding in self.local_call_validated_return_bindings(call, types) {
             self.collect_validated_type_references(owner, &binding, call.range(), &mut Vec::new());
         }
+        let mut provided_positions = HashSet::new();
         for (position, arg) in call.arguments.args.iter().enumerate() {
+            if let Some(callee) = &flow_callee {
+                provided_positions.insert(self.call_argument_position(
+                    callee,
+                    position,
+                    is_method_call,
+                ));
+            }
             let concrete_types = self.concrete_argument_types(arg, types);
             for concrete_type in concrete_types {
                 let Some(callee) = &flow_callee else {
@@ -107,6 +115,7 @@ impl SymbolCollector<'_> {
             }
             if let (Some(callee), Some(arg)) = (&flow_callee, &keyword.arg) {
                 if let Some(position) = self.keyword_argument_position(callee, arg.as_str()) {
+                    provided_positions.insert(position);
                     for concrete_type in self.concrete_argument_types(&keyword.value, types) {
                         self.call_args.push(CallArgumentType {
                             from: owner.to_string(),
@@ -158,6 +167,45 @@ impl SymbolCollector<'_> {
                     span: self
                         .locator
                         .span_from_range_string(self.file, keyword.range),
+                });
+            }
+        }
+        self.collect_default_argument_flows(
+            owner,
+            call,
+            flow_callee.as_deref(),
+            &provided_positions,
+        );
+    }
+
+    fn collect_default_argument_flows(
+        &mut self,
+        owner: &str,
+        call: &ast::ExprCall,
+        callee: Option<&str>,
+        provided_positions: &HashSet<usize>,
+    ) {
+        let Some(callee) = callee else {
+            return;
+        };
+        let Some(signature) = self
+            .available_fn_sigs
+            .iter()
+            .find(|signature| signature.function == callee)
+        else {
+            return;
+        };
+        for (position, parameter) in signature.parameters.iter().enumerate() {
+            if provided_positions.contains(&position) {
+                continue;
+            }
+            for concrete_type in &parameter.default_concrete_types {
+                self.call_args.push(CallArgumentType {
+                    from: owner.to_string(),
+                    callee: callee.to_string(),
+                    position,
+                    concrete_type: concrete_type.clone(),
+                    span: self.locator.span_from_range_string(self.file, call.range()),
                 });
             }
         }

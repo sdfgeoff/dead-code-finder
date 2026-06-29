@@ -63,6 +63,7 @@ pub(super) fn function_signature(
                     type_binding_from_annotation_expr(module, imports, annotation)
                 }),
                 dependency,
+                default_concrete_types: Vec::new(),
             }
         })
         .collect();

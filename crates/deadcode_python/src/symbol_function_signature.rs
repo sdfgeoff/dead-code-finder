@@ -30,6 +30,15 @@ impl SymbolCollector<'_> {
                 signature.concrete_return_type = Some(inferred.clone());
             }
         }
+        for (parameter, parameter_with_default) in signature
+            .parameters
+            .iter_mut()
+            .zip(function_def.parameters.iter())
+        {
+            if let Some(default) = parameter_with_default.default() {
+                parameter.default_concrete_types = self.concrete_argument_types(default, types);
+            }
+        }
         signature.return_type = match (signature.return_type, inferred) {
             (None, inferred) => inferred,
             (Some(explicit), Some(inferred))

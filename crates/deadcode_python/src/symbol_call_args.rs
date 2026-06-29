@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use ruff_python_ast as ast;
 
+use super::symbol_aliases::expand_alias_binding;
 use super::symbol_rules::{callable_identity, constructor_binding};
 use super::SymbolCollector;
 use crate::symbol_index::TypeBinding;
@@ -33,7 +34,10 @@ impl SymbolCollector<'_> {
             .or_else(|| self.function_object_return_binding(arg))
             .or_else(|| self.class_object_argument_binding(arg))
             .or_else(|| self.assignment_value_binding(arg, types))
-            .map(|binding| concrete_types_from_binding(&binding))
+            .map(|binding| {
+                let binding = expand_alias_binding(&binding, self.available_values);
+                concrete_types_from_binding(&binding)
+            })
             .unwrap_or_default()
     }
 

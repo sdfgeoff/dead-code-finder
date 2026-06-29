@@ -9,6 +9,7 @@ use deadcode_core::{Diagnostic, Severity, SourceSpan, SymbolKind};
 use ruff_text_size::TextRange;
 
 use crate::config::{LoadedProjectConfig, ResolvedRoot, RuleConfig};
+use crate::symbol_files::collect_python_files;
 use crate::symbol_roots::{is_test_file, root_groups_for_file, root_symbols_for_module};
 
 use self::symbol_collector::SymbolCollector;
@@ -136,6 +137,7 @@ pub struct FunctionParameter {
     pub name: String,
     pub annotation: Option<TypeBinding>,
     pub dependency: Option<String>,
+    pub default_concrete_types: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -403,6 +405,24 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
         all_function_signatures.extend(module_index.module.function_signatures.clone());
     }
 
+    all_function_signatures.clear();
+    for (file, module) in &project_files {
+        let module_index = index_module(
+            module,
+            file,
+            &index.known_modules,
+            &config.rules,
+            &all_classes,
+            &all_value_bindings,
+            &[],
+            &reexports,
+            &index.primary_root_group,
+            Vec::new(),
+            false,
+        )?;
+        all_function_signatures.extend(module_index.module.function_signatures.clone());
+    }
+
     all_classes.clear();
     for (file, module) in &project_files {
         let module_index = index_module(
@@ -500,38 +520,6 @@ fn route_glob_matches(project_dir: &Path, pattern: &str, file: &Path) -> bool {
         return relative.starts_with(prefix) && relative.ends_with(suffix.trim_start_matches('/'));
     }
     relative == pattern
-}
-
-fn collect_python_files(path: &Path, files: &mut Vec<PathBuf>) -> Result<(), SymbolIndexError> {
-    if path.is_file() {
-        if path.extension().is_some_and(|extension| extension == "py") {
-            files.push(path.to_path_buf());
-        }
-        return Ok(());
-    }
-
-    let entries = fs::read_dir(path).map_err(|source| SymbolIndexError::ReadDirectory {
-        path: path.to_path_buf(),
-        source,
-    })?;
-
-    for entry in entries {
-        let entry = entry.map_err(|source| SymbolIndexError::ReadDirectory {
-            path: path.to_path_buf(),
-            source,
-        })?;
-        let entry_path = entry.path();
-        if entry_path.is_dir() {
-            collect_python_files(&entry_path, files)?;
-        } else if entry_path
-            .extension()
-            .is_some_and(|extension| extension == "py")
-        {
-            files.push(entry_path);
-        }
-    }
-
-    Ok(())
 }
 
 struct IndexedModuleResult {

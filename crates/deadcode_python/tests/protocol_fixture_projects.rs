@@ -62,6 +62,28 @@ fn protocol_concrete_flow_through_forwarded_call_marks_implementation_methods_li
 }
 
 #[test]
+fn protocol_default_parameter_concrete_flow_marks_implementation_methods_live() {
+    let report = analyze_fixture("protocol_default_parameter_concrete_flow");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.ExampleContext.to_context_prompt".to_string()));
+    assert!(!symbols.contains(&"pkg.main.ExampleContext.resource_id".to_string()));
+    assert!(symbols.contains(&"pkg.main.UnusedContext.to_context_prompt".to_string()));
+}
+
+#[test]
+fn protocol_imported_default_parameter_concrete_flow_marks_implementation_methods_live() {
+    let report = analyze_fixture("protocol_imported_default_parameter_concrete_flow");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.context.ExampleContext.to_context_prompt".to_string()));
+    assert!(!symbols.contains(&"pkg.context.ExampleContext.resource_id".to_string()));
+    assert!(symbols.contains(&"pkg.context.UnusedContext.to_context_prompt".to_string()));
+}
+
+#[test]
 fn protocol_constructor_field_flow_from_pytest_fixture_marks_fake_methods_live() {
     let report = analyze_fixture("protocol_constructor_field_flow_from_pytest_fixture");
     let symbols = finding_symbols(&report);

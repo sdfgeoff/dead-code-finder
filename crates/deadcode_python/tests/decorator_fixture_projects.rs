@@ -40,6 +40,19 @@ fn decorator_factory_callable_wrapper_object_marks_call_live() {
     assert!(symbols.contains(&"pkg.cache.UnusedCallableCache.__call__".to_string()));
 }
 
+#[test]
+fn decorator_factory_nested_return_flow_marks_wrappers_live() {
+    let report = analyze_fixture("decorator_factory_nested_return_flow");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.deprecated".to_string()));
+    assert!(!symbols.contains(&"pkg.main.deprecated.decorator".to_string()));
+    assert!(!symbols.contains(&"pkg.main.deprecated.decorator.inner".to_string()));
+    assert!(!symbols.contains(&"pkg.main.old_endpoint".to_string()));
+    assert!(symbols.contains(&"pkg.main.new_endpoint".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))

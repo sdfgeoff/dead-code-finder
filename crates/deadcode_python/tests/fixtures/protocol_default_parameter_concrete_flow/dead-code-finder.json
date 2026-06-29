@@ -1,0 +1,11 @@
+{
+  "roots": [{ "path": "pkg", "module": "pkg" }],
+  "entrypoints": ["pkg/main.py"],
+  "rootGroups": [
+    {
+      "name": "test",
+      "entrypoints": ["pkg/main.py"],
+      "countsAsUsed": true
+    }
+  ]
+}

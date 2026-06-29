@@ -4,6 +4,7 @@ use deadcode_core::AnalysisReport;
 
 pub mod config;
 pub mod reachability;
+mod symbol_files;
 pub mod symbol_index;
 mod symbol_roots;
 
