@@ -180,6 +180,7 @@ fn reachable_from_groups(
 fn compute_live_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String> {
     let symbol_modules = symbol_module_map(index);
     let symbol_kinds = symbol_kind_map(index);
+    let module_values = module_value_set(index);
     let module_map = module_map(index);
     let class_map = class_map(index);
     let signature_map = function_signature_map(index);
@@ -276,8 +277,13 @@ fn compute_live_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String
             .iter()
             .filter(|reference| reference.from == owner)
         {
-            if let Some(target) = resolve_reference(&owner, module, &reference.name, &symbol_kinds)
-            {
+            if let Some(target) = resolve_reference(
+                &owner,
+                module,
+                &reference.name,
+                &symbol_kinds,
+                &module_values,
+            ) {
                 push_live(&target, &mut live, &mut queue);
                 for route_glob in &index.route_globs {
                     if route_glob.when_function_called == target {
@@ -341,6 +347,9 @@ fn symbol_module_map(index: &SymbolIndex) -> HashMap<String, String> {
         for symbol in &module.symbols {
             map.insert(symbol.qualified_name.clone(), module.module.clone());
         }
+        for value in &module.module_values {
+            map.insert(value.qualified_name.clone(), module.module.clone());
+        }
     }
     map
 }
@@ -373,6 +382,15 @@ fn function_signature_map(index: &SymbolIndex) -> HashMap<String, FunctionSignat
         }
     }
     map
+}
+
+fn module_value_set(index: &SymbolIndex) -> HashSet<String> {
+    index
+        .modules
+        .iter()
+        .flat_map(|module| &module.module_values)
+        .map(|value| value.qualified_name.clone())
+        .collect()
 }
 
 fn pytest_fixture_map(index: &SymbolIndex) -> HashMap<String, PytestFixture> {
@@ -423,6 +441,7 @@ fn resolve_reference(
     module: &ModuleIndex,
     name: &str,
     symbol_kinds: &HashMap<String, SymbolKind>,
+    module_values: &HashSet<String>,
 ) -> Option<String> {
     if symbol_kinds.contains_key(name) {
         return Some(name.to_string());
@@ -464,9 +483,11 @@ fn resolve_reference(
     }
 
     let same_module_symbol = format!("{}.{}", module.module, name);
-    symbol_kinds
-        .contains_key(&same_module_symbol)
-        .then_some(same_module_symbol)
+    if symbol_kinds.contains_key(&same_module_symbol) || module_values.contains(&same_module_symbol)
+    {
+        return Some(same_module_symbol);
+    }
+    None
 }
 
 fn push_live(target: &str, live: &mut HashSet<String>, queue: &mut VecDeque<String>) {

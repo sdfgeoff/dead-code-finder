@@ -42,6 +42,7 @@ pub struct ModuleIndex {
     pub imports: Vec<ResolvedImport>,
     pub classes: Vec<ClassInfo>,
     pub value_bindings: Vec<ValueBinding>,
+    pub module_values: Vec<ModuleValue>,
     pub function_signatures: Vec<FunctionSignature>,
     pub pytest_fixtures: Vec<PytestFixture>,
     pub call_argument_types: Vec<CallArgumentType>,
@@ -108,6 +109,12 @@ pub enum FieldAnnotation {
 pub struct ValueBinding {
     pub qualified_name: String,
     pub binding: TypeBinding,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleValue {
+    pub qualified_name: String,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -516,6 +523,7 @@ fn index_module(
     let mut imports = Vec::new();
     let mut classes = Vec::new();
     let mut value_bindings = Vec::new();
+    let mut module_values = Vec::new();
     let mut function_signatures = Vec::new();
     let mut pytest_fixtures = Vec::new();
     let mut call_argument_types = Vec::new();
@@ -537,6 +545,7 @@ fn index_module(
                 imports: &mut imports,
                 classes: &mut classes,
                 value_bindings: &mut value_bindings,
+                module_values: &mut module_values,
                 available_classes,
                 available_values,
                 available_fn_sigs,
@@ -582,6 +591,7 @@ fn index_module(
             imports,
             classes,
             value_bindings,
+            module_values,
             function_signatures,
             pytest_fixtures,
             call_argument_types,

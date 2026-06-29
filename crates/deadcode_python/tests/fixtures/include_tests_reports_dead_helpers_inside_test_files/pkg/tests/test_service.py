@@ -50,3 +50,14 @@ def test_uses_fixtures(dependent_fixture, renamed_fixture):
 @pytest.fixture
 def unused_fixture():
     pass
+
+
+def build_test_data():
+    return "live"
+
+
+TEST_DATA = [build_test_data()]
+
+
+def test_reads_module_value():
+    assert TEST_DATA

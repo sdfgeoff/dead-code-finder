@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::symbol_aliases::expand_alias_binding;
 use super::SymbolCollector;
-use crate::symbol_index::{ImportTarget, TypeBinding, ValueBinding};
+use crate::symbol_index::{ImportTarget, ModuleValue, TypeBinding, ValueBinding};
 
 impl SymbolCollector<'_> {
     pub(super) fn push_imported_value_bindings(
@@ -29,6 +29,7 @@ impl SymbolCollector<'_> {
 
     pub(super) fn push_value_binding(&mut self, name: &str, binding: TypeBinding) {
         let qualified_name = format!("{}.{}", self.module, name);
+        self.push_module_value(name);
         if let Some(existing) = self
             .value_bindings
             .iter_mut()
@@ -40,6 +41,21 @@ impl SymbolCollector<'_> {
         self.value_bindings.push(ValueBinding {
             qualified_name,
             binding,
+        });
+    }
+
+    pub(super) fn push_module_value(&mut self, name: &str) {
+        let qualified_name = format!("{}.{}", self.module, name);
+        if self
+            .module_values
+            .iter()
+            .any(|value| value.qualified_name == qualified_name)
+        {
+            return;
+        }
+        self.module_values.push(ModuleValue {
+            qualified_name,
+            name: name.to_string(),
         });
     }
 }

@@ -4,6 +4,8 @@ mod symbol_aliases;
 mod symbol_append;
 #[path = "symbol_assignment_target.rs"]
 mod symbol_assignment_target;
+#[path = "symbol_assignments.rs"]
+mod symbol_assignments;
 #[path = "symbol_binary_ops.rs"]
 mod symbol_binary_ops;
 #[path = "symbol_branch_narrowing.rs"]
@@ -104,8 +106,8 @@ use self::symbol_rules::{
 };
 use super::{
     AccessKind, CallArgumentType, ClassInfo, FunctionSignature, IndexedSymbol, MemberReference,
-    PytestFixture, ResolvedImport, SourceLocator, SymbolReference, TypeBinding, UnresolvedReceiver,
-    UnsupportedExpansion, ValueBinding,
+    ModuleValue, PytestFixture, ResolvedImport, SourceLocator, SymbolReference, TypeBinding,
+    UnresolvedReceiver, UnsupportedExpansion, ValueBinding,
 };
 use crate::config::RuleConfig;
 use crate::symbol_index::ReexportMap;
@@ -118,6 +120,7 @@ pub(super) struct SymbolCollector<'a> {
     pub(super) imports: &'a mut Vec<ResolvedImport>,
     pub(super) classes: &'a mut Vec<ClassInfo>,
     pub(super) value_bindings: &'a mut Vec<ValueBinding>,
+    pub(super) module_values: &'a mut Vec<ModuleValue>,
     pub(super) available_classes: &'a [ClassInfo],
     pub(super) available_values: &'a [ValueBinding],
     pub(super) available_fn_sigs: &'a [FunctionSignature],

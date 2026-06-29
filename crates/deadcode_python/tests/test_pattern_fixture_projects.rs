@@ -54,6 +54,19 @@ fn pytest_fixtures_are_reached_from_collected_tests() {
     assert!(symbols.contains(&"pkg.tests.test_service.unused_fixture".to_string()));
 }
 
+#[test]
+fn module_level_test_data_reaches_its_initializer() {
+    let report = analyze_fixture("include_tests_reports_dead_helpers_inside_test_files");
+    let symbols = report
+        .findings
+        .iter()
+        .map(|finding| finding.symbol.clone())
+        .collect::<Vec<_>>();
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.tests.test_service.build_test_data".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     analyze_project(&AnalyzeOptions {
         config_path: fixture_path(name).join("dead-code-finder.json"),
