@@ -634,6 +634,7 @@ fn is_test_file(config: &LoadedProjectConfig, file: &Path) -> bool {
                 .any(|part| part.as_os_str() == "tests"),
             "test_*.py" => filename.starts_with("test_") && filename.ends_with(".py"),
             "*_test.py" => filename.ends_with("_test.py"),
+            "*_test_*.py" => filename.contains("_test_") && filename.ends_with(".py"),
             "conftest.py" => filename == "conftest.py",
             pattern => relative_text == pattern,
         })

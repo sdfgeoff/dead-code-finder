@@ -500,6 +500,7 @@ fn default_test_patterns() -> Vec<String> {
     vec![
         "test_*.py".to_string(),
         "*_test.py".to_string(),
+        "*_test_*.py".to_string(),
         "tests/**".to_string(),
         "conftest.py".to_string(),
     ]
