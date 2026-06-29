@@ -61,6 +61,28 @@ fn protocol_concrete_flow_through_forwarded_call_marks_implementation_methods_li
     assert!(symbols.contains(&"pkg.main.UnusedContext.to_context_prompt".to_string()));
 }
 
+#[test]
+fn protocol_constructor_field_flow_from_pytest_fixture_marks_fake_methods_live() {
+    let report = analyze_fixture("protocol_constructor_field_flow_from_pytest_fixture");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.tests.test_service.FakeMessageSource.read_message".to_string()));
+    assert!(!symbols.contains(&"pkg.tests.test_service.FakeMessageSink.write_message".to_string()));
+    assert!(!symbols.contains(&"pkg.tests.test_service.FakeSinkProvider.open_sink".to_string()));
+    assert!(symbols
+        .contains(&"pkg.tests.test_service.FakeMessageSource.unused_source_helper".to_string()));
+    assert!(
+        symbols.contains(&"pkg.tests.test_service.FakeMessageSink.unused_sink_helper".to_string())
+    );
+    assert!(!symbols.contains(&"pkg.tests.test_service.FakeProviderSink.write_message".to_string()));
+    assert!(symbols.contains(
+        &"pkg.tests.test_service.FakeProviderSink.unused_provider_sink_helper".to_string()
+    ));
+    assert!(symbols
+        .contains(&"pkg.tests.test_service.FakeSinkProvider.unused_provider_helper".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     analyze_project(&AnalyzeOptions {
         config_path: fixture_path(name).join("dead-code-finder.json"),

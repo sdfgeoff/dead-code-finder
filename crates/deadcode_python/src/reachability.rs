@@ -2,19 +2,26 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use deadcode_core::{Diagnostic, Finding, Severity, SymbolKind};
 
-use crate::symbol_index::{
-    ClassInfo, FunctionSignature, ImportTarget, ModuleIndex, PytestFixture, SymbolIndex,
-};
+use crate::symbol_index::{AccessKind, ClassInfo, SymbolIndex};
 
 use self::reachability_class_metadata::{
     mark_configured_live_class_surfaces, mark_live_class_creation_metadata, mark_symbol_owners_live,
 };
 use self::reachability_concrete_flow::{concrete_flow_base, concrete_flow_candidates};
+use self::reachability_concrete_return::propagate_concrete_return_flows;
+use self::reachability_maps::{
+    class_map, function_signature_map, imported_module_target, module_map, module_value_set,
+    owner_module, pytest_fixture_map, resolve_reference, symbol_kind_map, symbol_module_map,
+};
 
 #[path = "reachability_class_metadata.rs"]
 mod reachability_class_metadata;
 #[path = "reachability_concrete_flow.rs"]
 mod reachability_concrete_flow;
+#[path = "reachability_concrete_return.rs"]
+mod reachability_concrete_return;
+#[path = "reachability_maps.rs"]
+mod reachability_maps;
 #[path = "reachability_protocol.rs"]
 mod reachability_protocol;
 
@@ -300,6 +307,18 @@ fn compute_live_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String
             .iter()
             .filter(|reference| reference.from == owner)
         {
+            if reference.access == AccessKind::Call
+                && propagate_concrete_return_flows(
+                    &owner,
+                    &reference.target,
+                    &signature_map,
+                    &symbol_kinds,
+                    &class_map,
+                    &mut concrete_flows,
+                )
+            {
+                queue.push_back(owner.clone());
+            }
             for target in resolve_member_targets(
                 &owner,
                 &reference.target,
@@ -331,163 +350,6 @@ fn root_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String> {
         .filter(|root| root.group == root_group)
         .map(|root| root.symbol.clone())
         .collect()
-}
-
-fn module_map(index: &SymbolIndex) -> HashMap<&str, &ModuleIndex> {
-    index
-        .modules
-        .iter()
-        .map(|module| (module.module.as_str(), module))
-        .collect()
-}
-
-fn symbol_module_map(index: &SymbolIndex) -> HashMap<String, String> {
-    let mut map = HashMap::new();
-    for module in &index.modules {
-        for symbol in &module.symbols {
-            map.insert(symbol.qualified_name.clone(), module.module.clone());
-        }
-        for value in &module.module_values {
-            map.insert(value.qualified_name.clone(), module.module.clone());
-        }
-    }
-    map
-}
-
-fn symbol_kind_map(index: &SymbolIndex) -> HashMap<String, SymbolKind> {
-    let mut map = HashMap::new();
-    for module in &index.modules {
-        for symbol in &module.symbols {
-            map.insert(symbol.qualified_name.clone(), symbol.kind.clone());
-        }
-    }
-    map
-}
-
-fn class_map(index: &SymbolIndex) -> HashMap<String, ClassInfo> {
-    let mut map = HashMap::new();
-    for module in &index.modules {
-        for class in &module.classes {
-            map.insert(class.class.clone(), class.clone());
-        }
-    }
-    map
-}
-
-fn function_signature_map(index: &SymbolIndex) -> HashMap<String, FunctionSignature> {
-    let mut map = HashMap::new();
-    for module in &index.modules {
-        for signature in &module.function_signatures {
-            map.insert(signature.function.clone(), signature.clone());
-        }
-    }
-    map
-}
-
-fn module_value_set(index: &SymbolIndex) -> HashSet<String> {
-    index
-        .modules
-        .iter()
-        .flat_map(|module| &module.module_values)
-        .map(|value| value.qualified_name.clone())
-        .collect()
-}
-
-fn pytest_fixture_map(index: &SymbolIndex) -> HashMap<String, PytestFixture> {
-    let mut map = HashMap::new();
-    for fixture in index
-        .modules
-        .iter()
-        .filter(|module| module.is_test)
-        .flat_map(|module| &module.pytest_fixtures)
-    {
-        map.insert(fixture.name.clone(), fixture.clone());
-    }
-    map
-}
-
-fn imported_module_target(target: &ImportTarget) -> Option<&str> {
-    match target {
-        ImportTarget::Module {
-            module,
-            external: false,
-        }
-        | ImportTarget::Symbol {
-            module,
-            external: false,
-            ..
-        }
-        | ImportTarget::Star {
-            module,
-            external: false,
-        } => Some(module),
-        _ => None,
-    }
-}
-
-fn owner_module(
-    owner: &str,
-    symbol_modules: &HashMap<String, String>,
-    modules: &HashMap<&str, &ModuleIndex>,
-) -> Option<String> {
-    if modules.contains_key(owner) {
-        return Some(owner.to_string());
-    }
-    symbol_modules.get(owner).cloned()
-}
-
-fn resolve_reference(
-    owner: &str,
-    module: &ModuleIndex,
-    name: &str,
-    symbol_kinds: &HashMap<String, SymbolKind>,
-    module_values: &HashSet<String>,
-) -> Option<String> {
-    if symbol_kinds.contains_key(name) {
-        return Some(name.to_string());
-    }
-
-    for import in &module.imports {
-        if import.binding != name {
-            continue;
-        }
-        return match &import.target {
-            ImportTarget::Module {
-                module,
-                external: false,
-            } => Some(module.clone()),
-            ImportTarget::Symbol {
-                module,
-                name,
-                external: false,
-            } => Some(format!("{module}.{name}")),
-            _ => None,
-        };
-    }
-
-    let owner_local_symbol = format!("{owner}.{name}");
-    if symbol_kinds.contains_key(&owner_local_symbol) {
-        return Some(owner_local_symbol);
-    }
-
-    let mut scope = owner;
-    while let Some((parent, _)) = scope.rsplit_once('.') {
-        if parent == module.module {
-            break;
-        }
-        let parent_local_symbol = format!("{parent}.{name}");
-        if symbol_kinds.contains_key(&parent_local_symbol) {
-            return Some(parent_local_symbol);
-        }
-        scope = parent;
-    }
-
-    let same_module_symbol = format!("{}.{}", module.module, name);
-    if symbol_kinds.contains_key(&same_module_symbol) || module_values.contains(&same_module_symbol)
-    {
-        return Some(same_module_symbol);
-    }
-    None
 }
 
 fn push_live(target: &str, live: &mut HashSet<String>, queue: &mut VecDeque<String>) {
@@ -522,7 +384,7 @@ fn resolve_member_targets(
     targets
 }
 
-fn lookup_member(
+pub(super) fn lookup_member(
     class_name: &str,
     member: &str,
     symbol_kinds: &HashMap<String, SymbolKind>,
@@ -562,7 +424,7 @@ fn lookup_member_inner(
     None
 }
 
-fn is_subclass_or_same(
+pub(super) fn is_subclass_or_same(
     concrete_type: &str,
     base_type: &str,
     class_map: &HashMap<String, ClassInfo>,

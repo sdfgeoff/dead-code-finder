@@ -1,0 +1,5 @@
+{
+  "roots": [{ "path": "pkg", "module": "pkg" }],
+  "entrypoints": ["pkg/service.py"],
+  "includeTests": true
+}
