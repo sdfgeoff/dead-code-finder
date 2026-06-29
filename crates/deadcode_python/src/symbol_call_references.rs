@@ -18,6 +18,7 @@ impl SymbolCollector<'_> {
     ) {
         let is_method_call = if let ast::Expr::Attribute(attribute) = call.func.as_ref() {
             self.collect_member_reference(owner, attribute, AccessKind::Call, types);
+            self.collect_typed_dict_get_call_reference(owner, call, types);
             self.collect_expr_references(owner, &attribute.value, types);
             true
         } else {

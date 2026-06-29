@@ -123,6 +123,39 @@ fn typed_dict_type_adapter_literal_keys() {
 }
 
 #[test]
+fn typed_dict_inherited_keys_from_weak_script() {
+    let report = analyze_fixture("typed_dict_inherited_keys_from_weak_script");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert_eq!(
+        reachable_from(&report, "pkg.scripts.read_events.RequiredEvent.event_id"),
+        vec!["weak"]
+    );
+    assert_eq!(
+        reachable_from(&report, "pkg.scripts.read_events.RequiredEvent.timestamp"),
+        vec!["weak"]
+    );
+    assert_eq!(
+        reachable_from(&report, "pkg.scripts.read_events.RequiredEvent.message"),
+        vec!["weak"]
+    );
+    assert_eq!(
+        reachable_from(&report, "pkg.scripts.read_events.Event.source"),
+        vec!["weak"]
+    );
+    assert_eq!(
+        reachable_from(&report, "pkg.scripts.read_events.EventBatch.events"),
+        vec!["weak"]
+    );
+    assert_eq!(
+        reachable_from(&report, "pkg.scripts.read_events.EventBatch.next_token"),
+        vec!["weak"]
+    );
+    assert!(symbols.contains(&"pkg.scripts.read_events.Event.unused".to_string()));
+}
+
+#[test]
 fn list_slice_preserves_collection_type() {
     let report = analyze_fixture("list_slice_preserves_collection_type");
     let symbols = finding_symbols(&report);
@@ -215,4 +248,13 @@ fn finding_symbols(report: &deadcode_core::AnalysisReport) -> Vec<String> {
         .iter()
         .map(|finding| finding.symbol.clone())
         .collect()
+}
+
+fn reachable_from(report: &deadcode_core::AnalysisReport, symbol: &str) -> Vec<String> {
+    report
+        .findings
+        .iter()
+        .find(|finding| finding.symbol == symbol)
+        .map(|finding| finding.reachable_from.clone())
+        .unwrap_or_default()
 }

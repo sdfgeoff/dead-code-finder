@@ -302,6 +302,7 @@ impl SymbolCollector<'_> {
             .or_else(|| self.binop_expression_binding(expr, types))
             .or_else(|| self.local_call_return_binding(expr, types))
             .or_else(|| self.local_call_field_read_binding(expr, types))
+            .or_else(|| self.typed_dict_get_call_binding(expr, types))
             .or_else(|| self.mapping_method_call_binding(expr, types))
             .or_else(|| self.json_mapping_call_binding(expr, types))
             .or_else(|| self.known_call_result_binding(expr))

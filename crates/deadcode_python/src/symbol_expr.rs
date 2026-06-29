@@ -23,6 +23,13 @@ pub(super) fn target_name(expr: &ast::Expr) -> Option<&str> {
     }
 }
 
+pub(super) fn string_literal(expr: &ast::Expr) -> Option<&str> {
+    let ast::Expr::StringLiteral(string) = expr else {
+        return None;
+    };
+    Some(string.value.to_str())
+}
+
 pub(super) fn self_attribute_name(expr: &ast::Expr) -> Option<&str> {
     match expr {
         ast::Expr::Attribute(attribute) => match attribute.value.as_ref() {

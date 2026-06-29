@@ -4,7 +4,7 @@ use ruff_python_ast as ast;
 
 use super::symbol_aliases::expand_alias_binding;
 use super::symbol_branch_narrowing::{merge_completed_branch_types, suite_returns};
-use super::symbol_expr::target_name;
+use super::symbol_expr::{string_literal, target_name};
 use super::symbol_generics::member_reference_target_bases;
 use super::symbol_imports::{collect_import, collect_import_from};
 use super::symbol_iteration::bind_collection_unpack_target;
@@ -419,11 +419,4 @@ impl SymbolCollector<'_> {
             .any(|class_info| class_info.class == callee)
             .then(|| format!("{callee}.__init__"))
     }
-}
-
-fn string_literal(expr: &ast::Expr) -> Option<&str> {
-    let ast::Expr::StringLiteral(string) = expr else {
-        return None;
-    };
-    Some(string.value.to_str())
 }
