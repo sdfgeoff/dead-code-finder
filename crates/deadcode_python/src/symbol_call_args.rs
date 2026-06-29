@@ -23,6 +23,12 @@ impl SymbolCollector<'_> {
                 })
                 .collect();
         }
+        if let ast::Expr::Lambda(lambda) = arg {
+            return self
+                .assignment_value_binding(&lambda.body, types)
+                .map(|binding| concrete_types_from_binding(&binding))
+                .unwrap_or_default();
+        }
         constructor_binding(self.module, self.imports, self.rules, arg)
             .or_else(|| self.function_object_return_binding(arg))
             .or_else(|| self.class_object_argument_binding(arg))

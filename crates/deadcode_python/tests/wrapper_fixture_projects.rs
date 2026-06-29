@@ -24,10 +24,14 @@ fn decorator_callable_provider_factory_flow() {
     assert!(report.diagnostics.is_empty());
     assert!(!symbols.contains(&"pkg.cache.CallableCache.__call__".to_string()));
     assert!(!symbols.contains(&"pkg.cache.CallableCache.get_items".to_string()));
+    assert!(!symbols.contains(&"pkg.main.MockLoader.__call__".to_string()));
+    assert!(!symbols.contains(&"pkg.providers.TrackedConnection.lookup".to_string()));
     assert!(!symbols.contains(&"pkg.providers.RedisConnection.lookup".to_string()));
     assert!(symbols.contains(&"pkg.cache.CallableCache.store_items".to_string()));
+    assert!(symbols.contains(&"pkg.providers.TrackedConnection.write".to_string()));
     assert!(symbols.contains(&"pkg.providers.RedisConnection.write".to_string()));
     assert!(symbols.contains(&"pkg.providers.MemoryConnection.lookup".to_string()));
+    assert!(symbols.contains(&"pkg.providers.TrackedConnection.unused".to_string()));
 }
 
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {

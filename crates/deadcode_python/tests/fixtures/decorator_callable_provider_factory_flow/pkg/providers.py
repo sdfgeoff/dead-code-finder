@@ -20,3 +20,17 @@ class MemoryConnection(Connection):
 
     def write(self, keys: list[str]) -> None:
         pass
+
+
+class TrackedConnection(Connection):
+    def __init__(self, connection: Connection) -> None:
+        self.connection = connection
+
+    def lookup(self, keys: list[str]) -> list[bytes | None]:
+        return self.connection.lookup(keys)
+
+    def write(self, keys: list[str]) -> None:
+        self.connection.write(keys)
+
+    def unused(self) -> None:
+        pass

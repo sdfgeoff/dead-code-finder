@@ -6,7 +6,9 @@ use ruff_text_size::Ranged;
 use super::symbol_construction::constructed_type_for_call;
 use super::symbol_generics::member_reference_target_bases;
 use super::symbol_members::push_member_reference;
-use super::symbol_rules::{callable_argument_references, callable_identity};
+use super::symbol_rules::{
+    callable_argument_references, callable_identity, decorator_callable_wrapper_type,
+};
 use super::SymbolCollector;
 use crate::symbol_index::{AccessKind, CallArgumentType, TypeBinding, UnsupportedExpansion};
 
@@ -36,6 +38,7 @@ impl SymbolCollector<'_> {
             self.constructor_init_callee(callee)
                 .unwrap_or_else(|| callee.to_string())
         });
+        self.collect_manual_callable_wrapper_call(owner, call, types);
         for (name, range) in callable_argument_references(
             self.module,
             self.imports,
@@ -182,6 +185,39 @@ impl SymbolCollector<'_> {
                 func.range(),
             );
         }
+    }
+
+    fn collect_manual_callable_wrapper_call(
+        &mut self,
+        owner: &str,
+        call: &ast::ExprCall,
+        types: &HashMap<String, TypeBinding>,
+    ) {
+        let ast::Expr::Call(decorator_call) = call.func.as_ref() else {
+            return;
+        };
+        let Some(callable_type) = decorator_callable_wrapper_type(
+            self.module,
+            self.imports,
+            self.rules,
+            &ast::Expr::Call(decorator_call.clone()),
+            types,
+        ) else {
+            return;
+        };
+        push_member_reference(
+            self.member_refs,
+            self.locator,
+            self.file,
+            owner,
+            format!("{callable_type}.__call__"),
+            AccessKind::Call,
+            call.func.range(),
+        );
+        let Some(argument) = call.arguments.args.first() else {
+            return;
+        };
+        self.collect_callable_object_call(owner, argument, types);
     }
 
     fn collect_callable_lambda_argument(
