@@ -56,18 +56,20 @@ impl SymbolCollector<'_> {
         self.collect_expr_references(owner, &lambda.body, &scoped_types);
     }
 
-    pub(super) fn collect_max_key_lambda_references(
+    pub(super) fn collect_extremum_key_lambda_references(
         &mut self,
         owner: &str,
         call: &ast::ExprCall,
         keyword: &ast::Keyword,
         types: &HashMap<String, TypeBinding>,
     ) -> bool {
-        if !matches!(call.func.as_ref(), ast::Expr::Name(name) if name.id.as_str() == "max")
-            || !keyword
-                .arg
-                .as_ref()
-                .is_some_and(|arg| arg.as_str() == "key")
+        if !matches!(
+            call.func.as_ref(),
+            ast::Expr::Name(name) if matches!(name.id.as_str(), "max" | "min")
+        ) || !keyword
+            .arg
+            .as_ref()
+            .is_some_and(|arg| arg.as_str() == "key")
         {
             return false;
         }

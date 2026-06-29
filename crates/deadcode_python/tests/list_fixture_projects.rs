@@ -73,7 +73,10 @@ fn max_call_preserves_iterable_item_type() {
     assert!(!symbols.contains(&"pkg.main.Properties.amount".to_string()));
     assert!(!symbols.contains(&"pkg.main.Properties.report_category".to_string()));
     assert!(!symbols.contains(&"pkg.main.Properties.credit_scheme".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Bounds.distance_between_centers".to_string()));
+    assert!(!symbols.contains(&"pkg.main.SceneAsset.bound".to_string()));
     assert!(symbols.contains(&"pkg.main.Properties.unused".to_string()));
+    assert!(symbols.contains(&"pkg.main.Bounds.unused_method".to_string()));
 }
 
 #[test]

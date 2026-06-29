@@ -110,7 +110,7 @@ impl SymbolCollector<'_> {
             );
         }
         for keyword in &call.arguments.keywords {
-            if self.collect_max_key_lambda_references(owner, call, keyword, types) {
+            if self.collect_extremum_key_lambda_references(owner, call, keyword, types) {
                 continue;
             }
             if let (Some(callee), Some(arg)) = (&flow_callee, &keyword.arg) {
