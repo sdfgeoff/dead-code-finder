@@ -63,6 +63,16 @@ fn pydantic_model_validate_json_returns_class() {
 }
 
 #[test]
+fn pydantic_subscripted_model_validate_marks_nested_generic_fields() {
+    let report = analyze_fixture("pydantic_subscripted_model_validate_marks_nested_generic_fields");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Payload.name".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Payload.owner".to_string()));
+}
+
+#[test]
 fn live_pydantic_model_marks_model_config() {
     let report = analyze_fixture("live_pydantic_model_marks_model_config");
     let symbols = finding_symbols(&report);

@@ -48,7 +48,7 @@ impl SymbolCollector<'_> {
         let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
             return None;
         };
-        let receiver_type = self.receiver_type_for_expr(&attribute.value, types)?;
+        let receiver_type = self.pydantic_validation_receiver_type(&attribute.value, types)?;
         match attribute.attr.as_str() {
             "validate_python" if receiver_type.base == "pydantic.TypeAdapter" => receiver_type
                 .args
@@ -72,7 +72,8 @@ impl SymbolCollector<'_> {
         let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
             return;
         };
-        let Some(receiver_type) = self.receiver_type_for_expr(&attribute.value, types) else {
+        let Some(receiver_type) = self.pydantic_validation_receiver_type(&attribute.value, types)
+        else {
             return;
         };
         if attribute.attr.as_str() == "validate_python"
@@ -100,6 +101,18 @@ impl SymbolCollector<'_> {
             call.range(),
             &mut Vec::new(),
         );
+    }
+
+    fn pydantic_validation_receiver_type(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        if matches!(expr, ast::Expr::Subscript(_)) {
+            return type_binding_from_expr(self.module, self.imports, expr);
+        }
+        self.receiver_type_for_expr(expr, types)
+            .or_else(|| type_binding_from_expr(self.module, self.imports, expr))
     }
 
     pub(super) fn record_pydantic_validated_return_type(
