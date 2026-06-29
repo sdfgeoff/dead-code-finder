@@ -7,9 +7,10 @@ use super::symbol_expr::string_literal;
 use super::symbol_generics::member_reference_target_bases;
 use super::symbol_imports::{collect_import, collect_import_from};
 use super::symbol_members::push_member_reference;
+use super::symbol_rules::local_callable_identity;
 use super::symbol_types::type_binding_from_expr;
 use super::SymbolCollector;
-use crate::symbol_index::{AccessKind, ImportTarget, TypeBinding};
+use crate::symbol_index::{AccessKind, FunctionReturnCall, ImportTarget, TypeBinding};
 
 impl SymbolCollector<'_> {
     pub(super) fn collect_statement_references(
@@ -51,6 +52,7 @@ impl SymbolCollector<'_> {
             }
             ast::Stmt::Return(ret) => {
                 if let Some(value) = &ret.value {
+                    self.collect_function_return_call(owner, value);
                     self.record_validated_return_from_expr(owner, value, types);
                     if let Some(return_type) = self.function_return_type(owner) {
                         self.collect_typed_dict_literal_construction(owner, &return_type, value);
@@ -182,6 +184,20 @@ impl SymbolCollector<'_> {
             }
             _ => {}
         }
+    }
+
+    fn collect_function_return_call(&mut self, owner: &str, value: &ast::Expr) {
+        let ast::Expr::Call(call) = value else {
+            return;
+        };
+        let Some(callable) = local_callable_identity(self.module, &call.func) else {
+            return;
+        };
+        self.function_return_calls.push(FunctionReturnCall {
+            function: owner.to_string(),
+            callable,
+            span: self.locator.span_from_range_string(self.file, call.range),
+        });
     }
 
     fn collect_pattern_references(

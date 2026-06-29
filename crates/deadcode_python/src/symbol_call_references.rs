@@ -7,10 +7,13 @@ use super::symbol_construction::constructed_type_for_call;
 use super::symbol_generics::member_reference_target_bases;
 use super::symbol_members::push_member_reference;
 use super::symbol_rules::{
-    callable_argument_references, callable_identity, decorator_callable_wrapper_type,
+    call_rule_matches, callable_argument_references, callable_identity,
+    decorator_callable_wrapper_type,
 };
 use super::SymbolCollector;
-use crate::symbol_index::{AccessKind, CallArgumentType, TypeBinding, UnsupportedExpansion};
+use crate::symbol_index::{
+    AccessKind, CallArgumentType, CallableReturnOverride, TypeBinding, UnsupportedExpansion,
+};
 
 impl SymbolCollector<'_> {
     pub(super) fn collect_call_references(
@@ -39,6 +42,7 @@ impl SymbolCollector<'_> {
                 .unwrap_or_else(|| callee.to_string())
         });
         self.collect_manual_callable_wrapper_call(owner, call, types);
+        self.collect_callable_return_override(owner, call, callee.as_deref(), types);
         for (name, range) in callable_argument_references(
             self.module,
             self.imports,
@@ -157,6 +161,61 @@ impl SymbolCollector<'_> {
                 });
             }
         }
+    }
+
+    fn collect_callable_return_override(
+        &mut self,
+        owner: &str,
+        call: &ast::ExprCall,
+        callee: Option<&str>,
+        types: &HashMap<String, TypeBinding>,
+    ) {
+        for rule in self
+            .rules
+            .calls
+            .iter()
+            .filter(|rule| rule.effect == "replaceCallableReturn")
+        {
+            if !call_rule_matches(rule, call, callee, types) {
+                continue;
+            }
+            let Some(target_callable) = self.callable_return_override_target(call, rule) else {
+                continue;
+            };
+            let Some(replacement) = call.arguments.args.get(rule.argument) else {
+                continue;
+            };
+            let Some(concrete_type) = self.override_return_binding(replacement, types) else {
+                continue;
+            };
+            self.callable_return_overrides.push(CallableReturnOverride {
+                from: owner.to_string(),
+                target_callable,
+                concrete_type: concrete_type.base,
+                span: self
+                    .locator
+                    .span_from_range_string(self.file, replacement.range()),
+            });
+        }
+    }
+
+    fn callable_return_override_target(
+        &self,
+        call: &ast::ExprCall,
+        rule: &crate::config::CallRule,
+    ) -> Option<String> {
+        let target_position = rule.target_argument.unwrap_or(0);
+        let target = call.arguments.args.get(target_position)?;
+        if let Some(member_position) = rule.member_argument {
+            let base = callable_identity(self.module, self.imports, target)?;
+            let member = call
+                .arguments
+                .args
+                .get(member_position)
+                .and_then(super::symbol_expr::string_literal)?;
+            return Some(format!("{base}.{member}"));
+        }
+        super::symbol_expr::string_literal(target).map(str::to_string)
     }
 
     fn collect_callable_object_call(

@@ -3,8 +3,9 @@ use std::collections::{HashMap, HashSet};
 use deadcode_core::SymbolKind;
 
 use crate::symbol_index::{
-    ClassInfo, DependencyOverride, FunctionDependency, FunctionSignature, ImportTarget,
-    ModuleIndex, PytestFixture, SymbolIndex,
+    CallableReturnMemberUse, CallableReturnOverride, ClassInfo, DependencyOverride,
+    FunctionDependency, FunctionReturnCall, FunctionSignature, ImportTarget, ModuleIndex,
+    PytestFixture, SymbolIndex,
 };
 
 pub(super) fn module_map(index: &SymbolIndex) -> HashMap<&str, &ModuleIndex> {
@@ -93,6 +94,30 @@ pub(super) fn dependency_overrides(index: &SymbolIndex) -> Vec<DependencyOverrid
         .modules
         .iter()
         .flat_map(|module| module.dependency_overrides.iter().cloned())
+        .collect()
+}
+
+pub(super) fn callable_return_overrides(index: &SymbolIndex) -> Vec<CallableReturnOverride> {
+    index
+        .modules
+        .iter()
+        .flat_map(|module| module.callable_return_overrides.iter().cloned())
+        .collect()
+}
+
+pub(super) fn callable_return_member_uses(index: &SymbolIndex) -> Vec<CallableReturnMemberUse> {
+    index
+        .modules
+        .iter()
+        .flat_map(|module| module.callable_return_member_uses.iter().cloned())
+        .collect()
+}
+
+pub(super) fn function_return_calls(index: &SymbolIndex) -> Vec<FunctionReturnCall> {
+    index
+        .modules
+        .iter()
+        .flat_map(|module| module.function_return_calls.iter().cloned())
         .collect()
 }
 

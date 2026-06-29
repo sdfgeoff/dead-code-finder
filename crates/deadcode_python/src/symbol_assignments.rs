@@ -94,7 +94,7 @@ impl SymbolCollector<'_> {
         None
     }
 
-    fn override_return_binding(
+    pub(super) fn override_return_binding(
         &self,
         value: &ast::Expr,
         types: &HashMap<String, TypeBinding>,
@@ -102,7 +102,48 @@ impl SymbolCollector<'_> {
         if let ast::Expr::Lambda(lambda) = value {
             return self.expression_or_name_binding(&lambda.body, types);
         }
+        if let Some(binding) = self.callable_factory_return_binding(value, types) {
+            return Some(binding);
+        }
         self.expression_or_name_binding(value, types)
+    }
+
+    fn callable_factory_return_binding(
+        &self,
+        value: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        let ast::Expr::Call(call) = value else {
+            return None;
+        };
+        let binding = self.assignment_value_binding(value, types)?;
+        if !is_callable_type(&binding.base) {
+            return None;
+        }
+        let return_type = binding.args.last()?;
+        for argument in &call.arguments.args {
+            for concrete_type in self.override_argument_concrete_types(argument, types) {
+                if self.is_subclass_or_same(&concrete_type, &return_type.base)
+                    || self.is_protocol_type(&return_type.base)
+                {
+                    return Some(TypeBinding::erased(concrete_type));
+                }
+            }
+        }
+        None
+    }
+
+    fn override_argument_concrete_types(
+        &self,
+        argument: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Vec<String> {
+        if let ast::Expr::Name(name) = argument {
+            if let Some(binding) = types.get(name.id.as_str()) {
+                return concrete_types_from_binding(binding);
+            }
+        }
+        self.concrete_argument_types(argument, types)
     }
 
     fn expression_or_name_binding(
@@ -112,21 +153,28 @@ impl SymbolCollector<'_> {
     ) -> Option<TypeBinding> {
         if let ast::Expr::Name(name) = expr {
             if let Some(binding) = types.get(name.id.as_str()) {
+                if let Some(return_type) = self.function_return_binding(&binding.base) {
+                    return Some(return_type);
+                }
                 return Some(binding.clone());
             }
             let callable = callable_identity(self.module, self.imports, expr)?;
-            return self
-                .available_fn_sigs
-                .iter()
-                .find(|signature| signature.function == callable)
-                .and_then(|signature| {
-                    signature
-                        .concrete_return_type
-                        .clone()
-                        .or_else(|| signature.return_type.clone())
-                });
+            return self.function_return_binding(&callable);
         }
         self.assignment_value_binding(expr, types)
+    }
+
+    fn function_return_binding(&self, function: &str) -> Option<TypeBinding> {
+        self.available_fn_sigs
+            .iter()
+            .chain(self.fn_sigs.iter())
+            .find(|signature| signature.function == function)
+            .and_then(|signature| {
+                signature
+                    .concrete_return_type
+                    .clone()
+                    .or_else(|| signature.return_type.clone())
+            })
     }
 
     pub(super) fn collect_ann_assign_references(
@@ -176,4 +224,42 @@ impl SymbolCollector<'_> {
         self.push_module_value(name);
         self.collect_expr_references(&value_owner, value, types);
     }
+
+    fn is_protocol_type(&self, type_name: &str) -> bool {
+        self.available_classes
+            .iter()
+            .chain(self.classes.iter())
+            .find(|class_info| class_info.class == type_name)
+            .is_some_and(|class_info| {
+                class_info
+                    .bases
+                    .iter()
+                    .any(|base| matches!(base.base.as_str(), "typing.Protocol" | "Protocol"))
+            })
+    }
+}
+
+fn is_callable_type(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "typing.Callable" | "collections.abc.Callable" | "Callable"
+    )
+}
+
+fn concrete_types_from_binding(binding: &TypeBinding) -> Vec<String> {
+    if matches!(binding.base.as_str(), "typing.Union" | "types.UnionType") {
+        return binding
+            .args
+            .iter()
+            .flat_map(concrete_types_from_binding)
+            .collect();
+    }
+    if is_callable_type(&binding.base) {
+        return binding
+            .args
+            .last()
+            .map(concrete_types_from_binding)
+            .unwrap_or_default();
+    }
+    vec![binding.base.clone()]
 }

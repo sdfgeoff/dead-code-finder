@@ -138,6 +138,10 @@ pub struct CallRule {
     pub method: Option<String>,
     #[serde(default)]
     pub member: Option<String>,
+    #[serde(default)]
+    pub target_argument: Option<usize>,
+    #[serde(default)]
+    pub member_argument: Option<usize>,
     pub effect: String,
     pub argument: usize,
 }
@@ -446,7 +450,7 @@ fn validate_rules(rules: &RuleConfig) -> Result<(), ConfigError> {
         }
         if !matches!(
             call.effect.as_str(),
-            "useCallableArgument" | "connectRouter" | "useArgumentMember"
+            "useCallableArgument" | "connectRouter" | "useArgumentMember" | "replaceCallableReturn"
         ) {
             return Err(ConfigError::InvalidRule {
                 message: format!("unsupported call effect {}", call.effect),

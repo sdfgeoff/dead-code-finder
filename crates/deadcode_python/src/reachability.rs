@@ -10,11 +10,14 @@ use self::reachability_class_metadata::{
 use self::reachability_concrete_flow::{concrete_flow_base, concrete_flow_candidates};
 use self::reachability_concrete_return::propagate_concrete_return_flows;
 use self::reachability_maps::{
-    class_map, dependency_overrides, function_dependencies, function_signature_map,
-    imported_module_target, module_map, module_value_set, owner_module, pytest_fixture_map,
-    resolve_reference, symbol_kind_map, symbol_module_map,
+    callable_return_member_uses, callable_return_overrides, class_map, dependency_overrides,
+    function_dependencies, function_return_calls, function_signature_map, imported_module_target,
+    module_map, module_value_set, owner_module, pytest_fixture_map, resolve_reference,
+    symbol_kind_map, symbol_module_map,
 };
 
+#[path = "reachability_callable_return.rs"]
+mod reachability_callable_return;
 #[path = "reachability_class_metadata.rs"]
 mod reachability_class_metadata;
 #[path = "reachability_concrete_flow.rs"]
@@ -195,7 +198,11 @@ fn compute_live_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String
     let fixture_map = pytest_fixture_map(index);
     let function_dependencies = function_dependencies(index);
     let dependency_overrides = dependency_overrides(index);
+    let callable_return_overrides = callable_return_overrides(index);
+    let callable_return_member_uses = callable_return_member_uses(index);
+    let function_return_calls = function_return_calls(index);
     let mut concrete_flows: HashMap<(String, String), HashSet<String>> = HashMap::new();
+    let mut callable_return_flows: HashMap<String, HashSet<String>> = HashMap::new();
     let mut live = root_symbols(index, root_group);
     let mut queue = live.iter().cloned().collect::<VecDeque<_>>();
 
@@ -263,6 +270,20 @@ fn compute_live_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String
                     queue.push_back(dependency.function.clone());
                 }
             }
+        }
+
+        for target in reachability_callable_return::process_callable_return_flows(
+            &owner,
+            &live,
+            &mut queue,
+            &mut callable_return_flows,
+            &callable_return_overrides,
+            &callable_return_member_uses,
+            &function_return_calls,
+            &symbol_kinds,
+            &class_map,
+        ) {
+            push_live(&target, &mut live, &mut queue);
         }
 
         for call_argument in module

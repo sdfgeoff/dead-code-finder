@@ -47,6 +47,9 @@ pub struct ModuleIndex {
     pub pytest_fixtures: Vec<PytestFixture>,
     pub function_dependencies: Vec<FunctionDependency>,
     pub dependency_overrides: Vec<DependencyOverride>,
+    pub callable_return_overrides: Vec<CallableReturnOverride>,
+    pub callable_return_member_uses: Vec<CallableReturnMemberUse>,
+    pub function_return_calls: Vec<FunctionReturnCall>,
     pub call_argument_types: Vec<CallArgumentType>,
     pub references: Vec<SymbolReference>,
     pub member_references: Vec<MemberReference>,
@@ -154,6 +157,29 @@ pub struct DependencyOverride {
     pub from: String,
     pub dependency: String,
     pub concrete_type: String,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallableReturnOverride {
+    pub from: String,
+    pub target_callable: String,
+    pub concrete_type: String,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallableReturnMemberUse {
+    pub from: String,
+    pub callable: String,
+    pub member: String,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionReturnCall {
+    pub function: String,
+    pub callable: String,
     pub span: SourceSpan,
 }
 
@@ -546,6 +572,9 @@ fn index_module(
     let mut pytest_fixtures = Vec::new();
     let mut function_dependencies = Vec::new();
     let mut dependency_overrides = Vec::new();
+    let mut callable_return_overrides = Vec::new();
+    let mut callable_return_member_uses = Vec::new();
+    let mut function_return_calls = Vec::new();
     let mut call_argument_types = Vec::new();
     let mut references = Vec::new();
     let mut member_references = Vec::new();
@@ -574,6 +603,9 @@ fn index_module(
                 pytest_fixtures: &mut pytest_fixtures,
                 function_dependencies: &mut function_dependencies,
                 dependency_overrides: &mut dependency_overrides,
+                callable_return_overrides: &mut callable_return_overrides,
+                callable_return_member_uses: &mut callable_return_member_uses,
+                function_return_calls: &mut function_return_calls,
                 call_args: &mut call_argument_types,
                 references: &mut references,
                 member_refs: &mut member_references,
@@ -618,6 +650,9 @@ fn index_module(
             pytest_fixtures,
             function_dependencies,
             dependency_overrides,
+            callable_return_overrides,
+            callable_return_member_uses,
+            function_return_calls,
             call_argument_types,
             references,
             member_references,

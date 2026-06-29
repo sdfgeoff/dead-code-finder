@@ -105,10 +105,10 @@ use self::symbol_rules::{
     decorator_registers_function,
 };
 use super::{
-    AccessKind, CallArgumentType, ClassInfo, DependencyOverride, FunctionDependency,
-    FunctionSignature, IndexedSymbol, MemberReference, ModuleValue, PytestFixture, ResolvedImport,
-    SourceLocator, SymbolReference, TypeBinding, UnresolvedReceiver, UnsupportedExpansion,
-    ValueBinding,
+    AccessKind, CallArgumentType, CallableReturnMemberUse, CallableReturnOverride, ClassInfo,
+    DependencyOverride, FunctionDependency, FunctionReturnCall, FunctionSignature, IndexedSymbol,
+    MemberReference, ModuleValue, PytestFixture, ResolvedImport, SourceLocator, SymbolReference,
+    TypeBinding, UnresolvedReceiver, UnsupportedExpansion, ValueBinding,
 };
 use crate::config::RuleConfig;
 use crate::symbol_index::ReexportMap;
@@ -129,6 +129,9 @@ pub(super) struct SymbolCollector<'a> {
     pub(super) pytest_fixtures: &'a mut Vec<PytestFixture>,
     pub(super) function_dependencies: &'a mut Vec<FunctionDependency>,
     pub(super) dependency_overrides: &'a mut Vec<DependencyOverride>,
+    pub(super) callable_return_overrides: &'a mut Vec<CallableReturnOverride>,
+    pub(super) callable_return_member_uses: &'a mut Vec<CallableReturnMemberUse>,
+    pub(super) function_return_calls: &'a mut Vec<FunctionReturnCall>,
     pub(super) call_args: &'a mut Vec<CallArgumentType>,
     pub(super) references: &'a mut Vec<SymbolReference>,
     pub(super) member_refs: &'a mut Vec<MemberReference>,

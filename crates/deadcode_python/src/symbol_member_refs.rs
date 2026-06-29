@@ -6,8 +6,9 @@ use super::super::AccessKind;
 use super::symbol_aliases::expand_alias_binding;
 use super::symbol_generics::{expr_type, member_reference_target_bases};
 use super::symbol_members::push_member_reference;
+use super::symbol_rules::local_callable_identity;
 use super::SymbolCollector;
-use crate::symbol_index::{ImportTarget, TypeBinding};
+use crate::symbol_index::{CallableReturnMemberUse, ImportTarget, TypeBinding};
 
 impl SymbolCollector<'_> {
     pub(super) fn collect_member_reference(
@@ -17,6 +18,7 @@ impl SymbolCollector<'_> {
         access: AccessKind,
         types: &HashMap<String, TypeBinding>,
     ) {
+        self.collect_callable_return_member_use(owner, attribute);
         let receiver_type = match attribute.value.as_ref() {
             ast::Expr::Name(receiver) => {
                 let receiver_name = receiver.id.as_str();
@@ -67,6 +69,24 @@ impl SymbolCollector<'_> {
                         .span_from_range_string(self.file, attribute.range),
                 });
         }
+    }
+
+    fn collect_callable_return_member_use(&mut self, owner: &str, attribute: &ast::ExprAttribute) {
+        let ast::Expr::Call(call) = attribute.value.as_ref() else {
+            return;
+        };
+        let Some(callable) = local_callable_identity(self.module, &call.func) else {
+            return;
+        };
+        self.callable_return_member_uses
+            .push(CallableReturnMemberUse {
+                from: owner.to_string(),
+                callable,
+                member: attribute.attr.as_str().to_string(),
+                span: self
+                    .locator
+                    .span_from_range_string(self.file, attribute.range),
+            });
     }
 }
 

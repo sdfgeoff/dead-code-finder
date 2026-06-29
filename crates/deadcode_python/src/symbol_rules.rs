@@ -192,6 +192,32 @@ pub(super) fn callable_identity(
     }
 }
 
+pub(super) fn local_callable_identity(module: &str, expr: &ast::Expr) -> Option<String> {
+    match expr {
+        ast::Expr::Name(name) => Some(format!("{}.{}", module, name.id.as_str())),
+        ast::Expr::Attribute(attribute) => {
+            let mut parts = vec![attribute.attr.as_str().to_string()];
+            let mut value = attribute.value.as_ref();
+            loop {
+                match value {
+                    ast::Expr::Name(name) => {
+                        parts.push(name.id.as_str().to_string());
+                        parts.reverse();
+                        return Some(format!("{}.{}", module, parts.join(".")));
+                    }
+                    ast::Expr::Attribute(nested) => {
+                        parts.push(nested.attr.as_str().to_string());
+                        value = nested.value.as_ref();
+                    }
+                    _ => return None,
+                }
+            }
+        }
+        ast::Expr::Subscript(subscript) => local_callable_identity(module, &subscript.value),
+        _ => None,
+    }
+}
+
 pub(super) fn callable_argument_references(
     module: &str,
     imports: &[ResolvedImport],
@@ -255,7 +281,7 @@ pub(super) fn callable_dependency_argument(
     None
 }
 
-fn call_rule_matches(
+pub(super) fn call_rule_matches(
     rule: &crate::config::CallRule,
     call: &ast::ExprCall,
     callee: Option<&str>,
