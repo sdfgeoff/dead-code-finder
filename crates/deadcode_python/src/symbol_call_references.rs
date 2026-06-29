@@ -45,6 +45,7 @@ impl SymbolCollector<'_> {
         }
         self.collect_factory_model_surfaces(owner, call, types);
         self.collect_pydantic_validation_field_references(owner, call, types);
+        self.collect_model_dump_references(owner, call, types);
         for binding in self.local_call_validated_return_bindings(call, types) {
             self.collect_validated_type_references(owner, &binding, call.range(), &mut Vec::new());
         }

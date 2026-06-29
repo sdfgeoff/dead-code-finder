@@ -1,13 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
 use ruff_python_ast as ast;
-use ruff_text_size::TextRange;
+use ruff_text_size::{Ranged, TextRange};
 
 use super::super::AccessKind;
 use super::symbol_generics::expr_type;
 use super::symbol_members::push_member_reference;
 use super::SymbolCollector;
-use crate::symbol_index::{ClassInfo, TypeBinding};
+use crate::symbol_index::{ClassInfo, FieldAnnotation, TypeBinding};
 
 impl SymbolCollector<'_> {
     pub(super) fn expand_model_dump_keyword(
@@ -72,6 +72,137 @@ impl SymbolCollector<'_> {
         }
         true
     }
+
+    pub(super) fn collect_model_dump_references(
+        &mut self,
+        owner: &str,
+        call: &ast::ExprCall,
+        types: &HashMap<String, TypeBinding>,
+    ) {
+        let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
+            return;
+        };
+        if !matches!(attribute.attr.as_str(), "model_dump" | "model_dump_json") {
+            return;
+        }
+        let Some(binding) = expr_type(self.available_classes, &attribute.value, types)
+            .filter(|binding| !binding.external)
+        else {
+            return;
+        };
+        self.collect_model_dump_binding(owner, &binding, call.range(), &mut Vec::new());
+    }
+
+    fn collect_model_dump_binding(
+        &mut self,
+        owner: &str,
+        binding: &TypeBinding,
+        range: TextRange,
+        visited: &mut Vec<String>,
+    ) {
+        if is_transparent_container(&binding.base) {
+            for arg in &binding.args {
+                self.collect_model_dump_binding(owner, arg, range, visited);
+            }
+            return;
+        }
+        if binding.external
+            || !class_derives_from(self.available_classes, &binding.base, "pydantic.BaseModel")
+            || visited.iter().any(|visited| visited == &binding.base)
+        {
+            return;
+        }
+        visited.push(binding.base.clone());
+        let fields = class_fields(self.available_classes, &binding.base);
+        for (field_name, field_type) in fields {
+            push_member_reference(
+                self.member_refs,
+                self.locator,
+                self.file,
+                owner,
+                format!("{}.{}", binding.base, field_name),
+                AccessKind::Read,
+                range,
+            );
+            self.collect_model_dump_binding(owner, &field_type, range, visited);
+        }
+        visited.pop();
+    }
+}
+
+fn class_fields(classes: &[ClassInfo], class_name: &str) -> Vec<(String, TypeBinding)> {
+    let mut fields = Vec::new();
+    collect_class_fields(classes, class_name, &mut fields, &mut Vec::new());
+    fields
+}
+
+fn collect_class_fields(
+    classes: &[ClassInfo],
+    class_name: &str,
+    fields: &mut Vec<(String, TypeBinding)>,
+    visited: &mut Vec<String>,
+) {
+    if visited.iter().any(|visited| visited == class_name) {
+        return;
+    }
+    visited.push(class_name.to_string());
+    let Some(class_info) = classes
+        .iter()
+        .find(|class_info| class_info.class == class_name)
+    else {
+        return;
+    };
+    for base in &class_info.bases {
+        collect_class_fields(classes, &base.base, fields, visited);
+    }
+    fields.extend(
+        class_info
+            .fields
+            .iter()
+            .map(|field| match &field.annotation {
+                FieldAnnotation::Concrete(binding) => (field.name.clone(), binding.clone()),
+            }),
+    );
+}
+
+fn is_transparent_container(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "typing.Annotated"
+            | "typing_extensions.Annotated"
+            | "typing.Union"
+            | "types.UnionType"
+            | "typing.Optional"
+            | "Optional"
+            | "list"
+            | "typing.List"
+            | "List"
+    )
+}
+
+fn class_derives_from(classes: &[ClassInfo], concrete_type: &str, base_type: &str) -> bool {
+    class_derives_from_inner(classes, concrete_type, base_type, &mut Vec::new())
+}
+
+fn class_derives_from_inner(
+    classes: &[ClassInfo],
+    concrete_type: &str,
+    base_type: &str,
+    visited: &mut Vec<String>,
+) -> bool {
+    if visited.iter().any(|visited| visited == concrete_type) {
+        return false;
+    }
+    visited.push(concrete_type.to_string());
+    let Some(class_info) = classes
+        .iter()
+        .find(|class_info| class_info.class == concrete_type)
+    else {
+        return false;
+    };
+    class_info.bases.iter().any(|base| {
+        base.base == base_type || class_derives_from_inner(classes, &base.base, base_type, visited)
+    })
 }
 
 fn class_field_names(classes: &[ClassInfo], class_name: &str) -> HashSet<String> {

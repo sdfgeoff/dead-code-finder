@@ -9,7 +9,7 @@ fn model_dump_json_if_expression_is_string() {
 
     assert!(report.diagnostics.is_empty());
     assert!(!symbols.contains(&"pkg.main.GeometryHash.geometry_hash".to_string()));
-    assert!(symbols.contains(&"pkg.main.Geometry.unused".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Geometry.unused".to_string()));
 }
 
 #[test]
@@ -17,6 +17,17 @@ fn model_dump_result_is_mapping() {
     let report = analyze_fixture("model_dump_result_is_mapping");
 
     assert!(report.diagnostics.is_empty());
+}
+
+#[test]
+fn model_dump_marks_nested_default_fields_live() {
+    let report = analyze_fixture("model_dump_marks_nested_default_fields_live");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Delivery.copy".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Delivery.blind_copy".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Content.charset".to_string()));
 }
 
 #[test]
