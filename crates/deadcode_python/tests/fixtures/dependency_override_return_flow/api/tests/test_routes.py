@@ -5,7 +5,7 @@ from api.routes import get_service
 
 
 class FakeService:
-    def run(self) -> str:
+    async def run(self) -> str:
         return "fake"
 
     def unused(self) -> str:

@@ -4,11 +4,16 @@ from api.framework import Depends, Router
 
 
 class Service(Protocol):
-    def run(self) -> str: ...
+    async def run(self) -> str: ...
+
+
+class ExampleEntity:
+    def __init__(self, user_id: int) -> None:
+        self.user_id = user_id
 
 
 class RealService:
-    def run(self) -> str:
+    async def run(self) -> str:
         return "real"
 
 
@@ -16,18 +21,26 @@ def get_service() -> Service:
     return RealService()
 
 
+def get_user() -> ExampleEntity:
+    return ExampleEntity(1)
+
+
 class ServiceConnection:
     def __init__(self, service: Service) -> None:
         self.service = service
 
-    def run(self) -> str:
-        return self.service.run()
+    async def run(self) -> str:
+        return await self.service.run()
 
 
 router = Router()
 
 
 @router.get("/items")
-def list_items(service: Service = Depends(get_service)) -> str:
+async def list_items(
+    entity: ExampleEntity = Depends(get_user),
+    service: Service = Depends(get_service),
+) -> str:
+    _ = entity.user_id
     connection = ServiceConnection(service)
-    return connection.run()
+    return await connection.run()
