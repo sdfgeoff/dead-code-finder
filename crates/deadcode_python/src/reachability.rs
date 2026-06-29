@@ -17,14 +17,10 @@ mod reachability_concrete_flow;
 mod reachability_protocol;
 
 pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
-    let live = compute_live_symbols(index, RootSet::Main);
-    let test_live = index
-        .include_tests
-        .then(|| compute_live_symbols(index, RootSet::Test))
-        .unwrap_or_default();
-    let weak_live = index
-        .include_weak
-        .then(|| compute_live_symbols(index, RootSet::Weak))
+    let live_by_group = compute_live_symbols_by_group(index);
+    let primary_live = live_by_group
+        .get(&index.primary_root_group)
+        .cloned()
         .unwrap_or_default();
     let mut findings = Vec::new();
     for module in &index.modules {
@@ -33,7 +29,7 @@ pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
                 continue;
             }
             if module.is_test {
-                if !index.include_tests || test_live.contains(&symbol.qualified_name) {
+                if !index.include_tests || symbol_reachable_from_any_group(&live_by_group, symbol) {
                     continue;
                 }
                 findings.push(Finding::unused(
@@ -42,14 +38,8 @@ pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
                     symbol.kind.clone(),
                     symbol.span.clone(),
                 ));
-            } else if !live.contains(&symbol.qualified_name) {
-                let mut reachable_from = Vec::new();
-                if test_live.contains(&symbol.qualified_name) {
-                    reachable_from.push("test".to_string());
-                }
-                if weak_live.contains(&symbol.qualified_name) {
-                    reachable_from.push("weak".to_string());
-                }
+            } else if !primary_live.contains(&symbol.qualified_name) {
+                let reachable_from = reachable_from_groups(index, &live_by_group, symbol);
                 findings.push(
                     Finding::unused(
                         code_for_kind(&symbol.kind),
@@ -75,7 +65,7 @@ pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
 }
 
 pub fn unresolved_receiver_diagnostics(index: &SymbolIndex) -> Vec<Diagnostic> {
-    let live = compute_live_symbols(index, RootSet::Main);
+    let live = compute_live_symbols(index, &index.primary_root_group);
     let mut diagnostics = Vec::new();
     for module in &index.modules {
         for unresolved in &module.unresolved_receivers {
@@ -104,7 +94,7 @@ pub fn unresolved_receiver_diagnostics(index: &SymbolIndex) -> Vec<Diagnostic> {
 }
 
 pub fn unsupported_expansion_diagnostics(index: &SymbolIndex) -> Vec<Diagnostic> {
-    let live = compute_live_symbols(index, RootSet::Main);
+    let live = compute_live_symbols(index, &index.primary_root_group);
     let mut diagnostics = Vec::new();
     for module in &index.modules {
         for expansion in &module.unsupported_expansions {
@@ -132,21 +122,57 @@ pub fn unsupported_expansion_diagnostics(index: &SymbolIndex) -> Vec<Diagnostic>
     diagnostics
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RootSet {
-    Main,
-    Test,
-    Weak,
+fn compute_live_symbols_by_group(index: &SymbolIndex) -> HashMap<String, HashSet<String>> {
+    root_group_names(index)
+        .into_iter()
+        .map(|group| {
+            let live = compute_live_symbols(index, &group);
+            (group, live)
+        })
+        .collect()
 }
 
-fn compute_live_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<String> {
+fn root_group_names(index: &SymbolIndex) -> Vec<String> {
+    let mut names = index.root_groups.clone();
+    if !names.contains(&index.primary_root_group) {
+        names.insert(0, index.primary_root_group.clone());
+    }
+    names
+}
+
+fn symbol_reachable_from_any_group(
+    live_by_group: &HashMap<String, HashSet<String>>,
+    symbol: &crate::symbol_index::IndexedSymbol,
+) -> bool {
+    live_by_group
+        .values()
+        .any(|live| live.contains(&symbol.qualified_name))
+}
+
+fn reachable_from_groups(
+    index: &SymbolIndex,
+    live_by_group: &HashMap<String, HashSet<String>>,
+    symbol: &crate::symbol_index::IndexedSymbol,
+) -> Vec<String> {
+    root_group_names(index)
+        .into_iter()
+        .filter(|group| group != &index.primary_root_group)
+        .filter(|group| {
+            live_by_group
+                .get(group)
+                .is_some_and(|live| live.contains(&symbol.qualified_name))
+        })
+        .collect()
+}
+
+fn compute_live_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String> {
     let symbol_modules = symbol_module_map(index);
     let symbol_kinds = symbol_kind_map(index);
     let module_map = module_map(index);
     let class_map = class_map(index);
     let signature_map = function_signature_map(index);
     let mut concrete_flows: HashMap<(String, String), HashSet<String>> = HashMap::new();
-    let mut live = root_symbols(index, root_set);
+    let mut live = root_symbols(index, root_group);
     let mut queue = live.iter().cloned().collect::<VecDeque<_>>();
 
     while let Some(owner) = queue.pop_front() {
@@ -267,26 +293,14 @@ fn compute_live_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<Strin
     live
 }
 
-fn root_symbols(index: &SymbolIndex, root_set: RootSet) -> HashSet<String> {
-    match root_set {
-        RootSet::Main => index
-            .modules
-            .iter()
-            .filter(|module| module.is_entrypoint && !module.is_test)
-            .map(|module| module.module.clone())
-            .collect(),
-        RootSet::Test => index
-            .modules
-            .iter()
-            .flat_map(|module| module.test_roots.iter().cloned())
-            .collect(),
-        RootSet::Weak => index
-            .modules
-            .iter()
-            .filter(|module| module.is_weak_entrypoint)
-            .map(|module| module.module.clone())
-            .collect(),
-    }
+fn root_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String> {
+    index
+        .modules
+        .iter()
+        .flat_map(|module| &module.root_symbols)
+        .filter(|root| root.group == root_group)
+        .map(|root| root.symbol.clone())
+        .collect()
 }
 
 fn module_map(index: &SymbolIndex) -> HashMap<&str, &ModuleIndex> {

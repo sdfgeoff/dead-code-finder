@@ -5,6 +5,7 @@ use deadcode_core::AnalysisReport;
 pub mod config;
 pub mod reachability;
 pub mod symbol_index;
+mod symbol_roots;
 
 use config::{load_project_config, ConfigError};
 use reachability::{

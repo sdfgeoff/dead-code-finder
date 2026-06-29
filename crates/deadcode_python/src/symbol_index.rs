@@ -9,6 +9,7 @@ use deadcode_core::{Diagnostic, Severity, SourceSpan, SymbolKind};
 use ruff_text_size::TextRange;
 
 use crate::config::{LoadedProjectConfig, ResolvedRoot, RuleConfig};
+use crate::symbol_roots::{is_test_file, root_groups_for_file, root_symbols_for_module};
 
 use self::symbol_collector::SymbolCollector;
 
@@ -19,7 +20,8 @@ pub struct SymbolIndex {
     pub modules: Vec<ModuleIndex>,
     pub parse_diagnostics: Vec<ParseDiagnostic>,
     pub include_tests: bool,
-    pub include_weak: bool,
+    pub root_groups: Vec<String>,
+    pub primary_root_group: String,
     pub class_surfaces: Vec<String>,
     pub route_globs: Vec<ResolvedRouteGlob>,
     known_modules: HashSet<String>,
@@ -45,10 +47,14 @@ pub struct ModuleIndex {
     pub member_references: Vec<MemberReference>,
     pub unresolved_receivers: Vec<UnresolvedReceiver>,
     pub unsupported_expansions: Vec<UnsupportedExpansion>,
-    pub is_entrypoint: bool,
-    pub is_weak_entrypoint: bool,
     pub is_test: bool,
-    pub test_roots: Vec<String>,
+    pub root_symbols: Vec<RootSymbol>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RootSymbol {
+    pub group: String,
+    pub symbol: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -244,7 +250,16 @@ impl std::error::Error for SymbolIndexError {}
 pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, SymbolIndexError> {
     let mut index = SymbolIndex::default();
     index.include_tests = config.include_tests;
-    index.include_weak = !config.weak_entrypoints.is_empty();
+    index.primary_root_group = config
+        .root_groups
+        .first()
+        .map(|group| group.name.clone())
+        .unwrap_or_else(|| "main".to_string());
+    index.root_groups = config
+        .root_groups
+        .iter()
+        .map(|group| group.name.clone())
+        .collect();
     index.class_surfaces = config
         .rules
         .class_surfaces
@@ -275,8 +290,8 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             &[],
             &[],
             &ReexportMap::new(),
-            false,
-            false,
+            &index.primary_root_group,
+            Vec::new(),
             false,
         )?;
         index.modules.push(module_index.module);
@@ -295,8 +310,8 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             &[],
             &[],
             &reexports,
-            false,
-            false,
+            &index.primary_root_group,
+            Vec::new(),
             false,
         )?;
         all_classes.extend(module_index.module.classes.clone());
@@ -314,8 +329,8 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             &[],
             &[],
             &reexports,
-            false,
-            false,
+            &index.primary_root_group,
+            Vec::new(),
             false,
         )?;
         all_value_bindings.extend(module_index.module.value_bindings.clone());
@@ -333,8 +348,8 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             &all_value_bindings,
             &[],
             &reexports,
-            false,
-            false,
+            &index.primary_root_group,
+            Vec::new(),
             false,
         )?;
         all_classes.extend(module_index.module.classes.clone());
@@ -350,8 +365,8 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             &all_value_bindings,
             &all_function_signatures,
             &reexports,
-            is_configured_entrypoint(config, file),
-            is_configured_weak_entrypoint(config, file),
+            &index.primary_root_group,
+            root_groups_for_file(config, file),
             is_test_file(config, file),
         )?;
         index
@@ -365,6 +380,11 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             .cmp(&right.module)
             .then_with(|| left.file.cmp(&right.file))
     });
+    index.include_tests = index.include_tests
+        || index
+            .modules
+            .iter()
+            .any(|module| module.is_test && !module.root_symbols.is_empty());
     index.route_globs = resolve_route_globs(config, &index.modules);
 
     index.known_modules.clear();
@@ -462,8 +482,8 @@ fn index_module(
     available_values: &[ValueBinding],
     available_fn_sigs: &[FunctionSignature],
     reexports: &ReexportMap,
-    is_configured_entrypoint: bool,
-    is_configured_weak_entrypoint: bool,
+    primary_root_group: &str,
+    configured_root_groups: Vec<String>,
     is_test: bool,
 ) -> Result<IndexedModuleResult, SymbolIndexError> {
     let source = fs::read_to_string(file).map_err(|source| SymbolIndexError::ReadFile {
@@ -527,17 +547,14 @@ fn index_module(
         }
     }
 
-    let test_roots = if is_test {
-        symbols
-            .iter()
-            .filter(|symbol| {
-                symbol.kind == SymbolKind::Function && symbol.name.starts_with("test_")
-            })
-            .map(|symbol| symbol.qualified_name.clone())
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let root_symbols = root_symbols_for_module(
+        module,
+        &symbols,
+        primary_root_group,
+        configured_root_groups,
+        is_test,
+        has_main_entrypoint,
+    );
 
     Ok(IndexedModuleResult {
         module: ModuleIndex {
@@ -553,11 +570,8 @@ fn index_module(
             member_references,
             unresolved_receivers,
             unsupported_expansions,
-            is_entrypoint: is_configured_entrypoint
-                || (has_main_entrypoint && !is_configured_weak_entrypoint),
-            is_weak_entrypoint: is_configured_weak_entrypoint,
             is_test,
-            test_roots,
+            root_symbols,
         },
         parse_diagnostics,
     })
@@ -573,71 +587,6 @@ fn module_name_for_file(root: &ResolvedRoot, file: &Path) -> String {
         .collect::<Vec<_>>();
     parts.insert(0, root.module.clone());
     parts.join(".")
-}
-
-fn is_configured_entrypoint(config: &LoadedProjectConfig, file: &Path) -> bool {
-    config.entrypoints.iter().any(|entrypoint| {
-        let configured = config.project_dir.join(entrypoint);
-        configured == file
-    })
-}
-
-fn is_configured_weak_entrypoint(config: &LoadedProjectConfig, file: &Path) -> bool {
-    config
-        .weak_entrypoints
-        .iter()
-        .any(|entrypoint| configured_path_matches(config, entrypoint, file))
-}
-
-fn configured_path_matches(config: &LoadedProjectConfig, pattern: &str, file: &Path) -> bool {
-    if !pattern.contains('*') {
-        return config.project_dir.join(pattern) == file;
-    }
-    let relative = file.strip_prefix(&config.project_dir).unwrap_or(file);
-    let relative = relative.to_string_lossy().replace('\\', "/");
-    glob_pattern_matches(pattern, &relative)
-}
-
-fn glob_pattern_matches(pattern: &str, relative: &str) -> bool {
-    if pattern == "**/*.py" {
-        return relative.ends_with(".py");
-    }
-    if let Some((prefix, suffix)) = pattern.split_once("**") {
-        if !relative.starts_with(prefix) {
-            return false;
-        }
-        let suffix = suffix.trim_start_matches('/');
-        if suffix.contains('*') {
-            return glob_pattern_matches(suffix, &relative[prefix.len()..]);
-        }
-        return relative.ends_with(suffix);
-    }
-    if let Some((prefix, suffix)) = pattern.split_once('*') {
-        return relative.starts_with(prefix) && relative.ends_with(suffix);
-    }
-    relative == pattern
-}
-
-fn is_test_file(config: &LoadedProjectConfig, file: &Path) -> bool {
-    let relative = file.strip_prefix(&config.project_dir).unwrap_or(file);
-    let relative_text = relative.to_string_lossy();
-    let filename = file
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("");
-    config
-        .test_patterns
-        .iter()
-        .any(|pattern| match pattern.as_str() {
-            "tests/**" => relative
-                .components()
-                .any(|part| part.as_os_str() == "tests"),
-            "test_*.py" => filename.starts_with("test_") && filename.ends_with(".py"),
-            "*_test.py" => filename.ends_with("_test.py"),
-            "*_test_*.py" => filename.contains("_test_") && filename.ends_with(".py"),
-            "conftest.py" => filename == "conftest.py",
-            pattern => relative_text == pattern,
-        })
 }
 
 fn strip_py_extension(part: &str) -> String {

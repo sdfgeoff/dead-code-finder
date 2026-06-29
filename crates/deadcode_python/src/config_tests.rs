@@ -12,6 +12,7 @@ fn resolves_explicit_roots() {
             path: "example_app".to_string(),
             module: "example_app".to_string(),
         }],
+        root_groups: vec![],
         entrypoints: vec![],
         weak_entrypoints: vec![],
         include_tests: false,
@@ -40,6 +41,7 @@ fn expands_workspace_root_globs() {
             path: "packages/*/src/*".to_string(),
             module: "{basename}".to_string(),
         }],
+        root_groups: vec![],
         entrypoints: vec![],
         weak_entrypoints: vec![],
         include_tests: false,
@@ -80,6 +82,7 @@ fn rejects_duplicate_modules() {
                 module: "same".to_string(),
             },
         ],
+        root_groups: vec![],
         entrypoints: vec![],
         weak_entrypoints: vec![],
         include_tests: false,
@@ -115,11 +118,41 @@ fn loads_json_config() {
 
     let loaded = load_project_config(&workspace.join("dead-code-finder.json")).unwrap();
 
-    assert_eq!(loaded.entrypoints, vec!["main.py"]);
-    assert_eq!(loaded.weak_entrypoints, vec!["scripts/*.py"]);
+    assert_eq!(loaded.root_groups[0].name, "main");
+    assert_eq!(loaded.root_groups[0].entrypoints, vec!["main.py"]);
+    assert_eq!(loaded.root_groups[1].name, "weak");
+    assert_eq!(loaded.root_groups[1].entrypoints, vec!["scripts/*.py"]);
+    assert_eq!(loaded.root_groups[2].name, "test");
     assert!(loaded.include_tests);
     assert_eq!(loaded.roots[0].module, "pkg");
     assert_eq!(loaded.rules.class_surfaces[0].base, "pkg.orm.Base");
+}
+
+#[test]
+fn loads_configured_root_groups() {
+    let workspace = test_workspace("loads_configured_root_groups");
+    fs::create_dir_all(workspace.join("pkg")).unwrap();
+    fs::write(
+        workspace.join("dead-code-finder.json"),
+        r#"{
+            "roots": [{"path": "pkg", "module": "pkg"}],
+            "rootGroups": [
+                {"name": "production", "entrypoints": ["pkg/app.py"]},
+                {"name": "scripts", "entrypoints": ["pkg/scripts/**/*.py"]}
+            ]
+        }"#,
+    )
+    .unwrap();
+
+    let loaded = load_project_config(&workspace.join("dead-code-finder.json")).unwrap();
+
+    assert_eq!(loaded.root_groups[0].name, "production");
+    assert_eq!(loaded.root_groups[0].entrypoints, vec!["pkg/app.py"]);
+    assert_eq!(loaded.root_groups[1].name, "scripts");
+    assert_eq!(
+        loaded.root_groups[1].entrypoints,
+        vec!["pkg/scripts/**/*.py"]
+    );
 }
 
 #[test]

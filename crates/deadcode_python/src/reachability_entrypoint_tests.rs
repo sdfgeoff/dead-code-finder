@@ -1,7 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::config::{ConstructorRule, LoadedProjectConfig, ResolvedRoot, RuleConfig};
+use crate::config::{
+    ConstructorRule, LoadedProjectConfig, LoadedRootGroup, ResolvedRoot, RuleConfig,
+};
 use crate::symbol_index::index_project;
 
 use super::*;
@@ -206,8 +208,10 @@ fn loaded_config(
         config_path: workspace.join("dead-code-finder.json"),
         project_dir: workspace.to_path_buf(),
         roots,
-        entrypoints,
-        weak_entrypoints: Vec::new(),
+        root_groups: vec![LoadedRootGroup {
+            name: "main".to_string(),
+            entrypoints,
+        }],
         include_tests: false,
         test_patterns: Vec::new(),
         rules: RuleConfig::default(),

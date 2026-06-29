@@ -9,6 +9,8 @@ use serde::Deserialize;
 pub struct ProjectConfig {
     pub roots: Vec<RootConfig>,
     #[serde(default)]
+    pub root_groups: Vec<RootGroupConfig>,
+    #[serde(default)]
     pub entrypoints: Vec<String>,
     #[serde(default)]
     pub weak_entrypoints: Vec<String>,
@@ -27,16 +29,29 @@ pub struct RootConfig {
     pub module: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RootGroupConfig {
+    pub name: String,
+    #[serde(default)]
+    pub entrypoints: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoadedProjectConfig {
     pub config_path: PathBuf,
     pub project_dir: PathBuf,
     pub roots: Vec<ResolvedRoot>,
-    pub entrypoints: Vec<String>,
-    pub weak_entrypoints: Vec<String>,
+    pub root_groups: Vec<LoadedRootGroup>,
     pub include_tests: bool,
     pub test_patterns: Vec<String>,
     pub rules: RuleConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoadedRootGroup {
+    pub name: String,
+    pub entrypoints: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
@@ -163,7 +178,14 @@ pub enum ConfigError {
     DuplicateModule {
         module: String,
     },
+    DuplicateRootGroup {
+        name: String,
+    },
     EmptyRoots,
+    EmptyRootGroupName,
+    EmptyRootGroupEntrypoints {
+        name: String,
+    },
     InvalidRule {
         message: String,
     },
@@ -194,7 +216,17 @@ impl std::fmt::Display for ConfigError {
             Self::DuplicateModule { module } => {
                 write!(formatter, "duplicate configured module root: {module}")
             }
+            Self::DuplicateRootGroup { name } => {
+                write!(formatter, "duplicate configured root group: {name}")
+            }
             Self::EmptyRoots => write!(formatter, "configuration must include at least one root"),
+            Self::EmptyRootGroupName => write!(formatter, "root group name must not be empty"),
+            Self::EmptyRootGroupEntrypoints { name } => {
+                write!(
+                    formatter,
+                    "root group {name} must include at least one entrypoint"
+                )
+            }
             Self::InvalidRule { message } => write!(formatter, "invalid rule: {message}"),
         }
     }
@@ -223,17 +255,65 @@ pub fn load_project_config(path: &Path) -> Result<LoadedProjectConfig, ConfigErr
         })?;
 
     let roots = resolve_roots(&project_dir, &config)?;
+    let root_groups = root_groups(&config)?;
     validate_rules(&config.rules)?;
     Ok(LoadedProjectConfig {
         config_path,
         project_dir,
         roots,
-        entrypoints: config.entrypoints,
-        weak_entrypoints: config.weak_entrypoints,
+        root_groups,
         include_tests: config.include_tests,
         test_patterns: config.test_patterns,
         rules: config.rules,
     })
+}
+
+fn root_groups(config: &ProjectConfig) -> Result<Vec<LoadedRootGroup>, ConfigError> {
+    let mut groups = Vec::new();
+    if config.root_groups.is_empty() {
+        groups.push(LoadedRootGroup {
+            name: "main".to_string(),
+            entrypoints: config.entrypoints.clone(),
+        });
+    } else {
+        groups.extend(config.root_groups.iter().map(|group| LoadedRootGroup {
+            name: group.name.clone(),
+            entrypoints: group.entrypoints.clone(),
+        }));
+    }
+    if !config.weak_entrypoints.is_empty() {
+        groups.push(LoadedRootGroup {
+            name: "weak".to_string(),
+            entrypoints: config.weak_entrypoints.clone(),
+        });
+    }
+    if config.include_tests {
+        groups.push(LoadedRootGroup {
+            name: "test".to_string(),
+            entrypoints: config.test_patterns.clone(),
+        });
+    }
+    validate_root_groups(&groups)
+}
+
+fn validate_root_groups(groups: &[LoadedRootGroup]) -> Result<Vec<LoadedRootGroup>, ConfigError> {
+    let mut names = HashSet::new();
+    for group in groups {
+        if group.name.trim().is_empty() {
+            return Err(ConfigError::EmptyRootGroupName);
+        }
+        if !names.insert(group.name.clone()) {
+            return Err(ConfigError::DuplicateRootGroup {
+                name: group.name.clone(),
+            });
+        }
+        if group.name != "main" && group.entrypoints.is_empty() {
+            return Err(ConfigError::EmptyRootGroupEntrypoints {
+                name: group.name.clone(),
+            });
+        }
+    }
+    Ok(groups.to_vec())
 }
 
 fn validate_rules(rules: &RuleConfig) -> Result<(), ConfigError> {

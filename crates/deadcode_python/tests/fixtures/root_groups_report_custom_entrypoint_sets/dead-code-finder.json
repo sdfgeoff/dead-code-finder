@@ -1,0 +1,8 @@
+{
+  "roots": [{ "path": "pkg", "module": "pkg" }],
+  "rootGroups": [
+    { "name": "production", "entrypoints": ["pkg/app.py"] },
+    { "name": "scripts", "entrypoints": ["pkg/scripts/*.py"] },
+    { "name": "tests", "entrypoints": ["pkg/tests/test_*.py"] }
+  ]
+}
