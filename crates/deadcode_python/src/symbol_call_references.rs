@@ -4,6 +4,7 @@ use ruff_python_ast as ast;
 use ruff_text_size::Ranged;
 
 use super::symbol_construction::constructed_type_for_call;
+use super::symbol_generics::member_reference_target_bases;
 use super::symbol_members::push_member_reference;
 use super::symbol_rules::{callable_argument_references, callable_identity};
 use super::SymbolCollector;
@@ -23,6 +24,7 @@ impl SymbolCollector<'_> {
             true
         } else {
             self.collect_expr_references(owner, &call.func, types);
+            self.collect_callable_object_call(owner, &call.func, types);
             false
         };
 
@@ -151,6 +153,34 @@ impl SymbolCollector<'_> {
                         .span_from_range_string(self.file, keyword.range),
                 });
             }
+        }
+    }
+
+    fn collect_callable_object_call(
+        &mut self,
+        owner: &str,
+        func: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) {
+        let ast::Expr::Name(name) = func else {
+            return;
+        };
+        let Some(callee_type) = types.get(name.id.as_str()) else {
+            return;
+        };
+        if callee_type.external {
+            return;
+        }
+        for target_base in member_reference_target_bases(callee_type) {
+            push_member_reference(
+                self.member_refs,
+                self.locator,
+                self.file,
+                owner,
+                format!("{target_base}.__call__"),
+                AccessKind::Call,
+                func.range(),
+            );
         }
     }
 

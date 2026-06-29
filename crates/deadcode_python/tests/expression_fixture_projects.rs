@@ -81,6 +81,17 @@ fn unary_expression_references_are_traversed() {
     assert!(symbols.contains(&"pkg.main.Config.UNUSED_FEATURE".to_string()));
 }
 
+#[test]
+fn callable_object_invocation_marks_call_method_live() {
+    let report = analyze_fixture("callable_object_invocation");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Worker.__call__".to_string()));
+    assert!(symbols.contains(&"pkg.main.Worker.unused".to_string()));
+    assert!(symbols.contains(&"pkg.main.UnusedWorker.__call__".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))
