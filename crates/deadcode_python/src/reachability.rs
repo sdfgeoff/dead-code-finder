@@ -69,6 +69,8 @@ pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
             .then_with(|| left.span.line.cmp(&right.span.line))
             .then_with(|| left.symbol.cmp(&right.symbol))
     });
+    let mut seen_symbols = HashSet::new();
+    findings.retain(|finding| seen_symbols.insert(finding.symbol.clone()));
     findings
 }
 

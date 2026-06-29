@@ -481,6 +481,20 @@ fn include_tests_reports_dead_helpers_inside_test_files() {
     assert!(symbols.contains(&"pkg.tests.test_service.dead_helper".to_string()));
 }
 
+#[test]
+fn duplicate_field_definitions_report_once() {
+    let report = analyze_fixture("duplicate_field_definitions_report_once");
+    let symbols = finding_symbols(&report);
+
+    assert_eq!(
+        symbols
+            .iter()
+            .filter(|symbol| symbol.as_str() == "pkg.main.Record.count")
+            .count(),
+        1
+    );
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))
