@@ -5,6 +5,7 @@ from api.framework import Depends, Router
 
 class Service(Protocol):
     async def run(self) -> str: ...
+    async def publish(self, channel: str, data: str) -> None: ...
 
 
 class ExampleEntity:
@@ -15,6 +16,9 @@ class ExampleEntity:
 class RealService:
     async def run(self) -> str:
         return "real"
+
+    async def publish(self, channel: str, data: str) -> None:
+        pass
 
 
 def get_service() -> Service:
@@ -32,6 +36,9 @@ class ServiceConnection:
     async def run(self) -> str:
         return await self.service.run()
 
+    async def publish(self) -> None:
+        await self.service.publish("items", "payload")
+
 
 router = Router()
 
@@ -43,4 +50,5 @@ async def list_items(
 ) -> str:
     _ = entity.user_id
     connection = ServiceConnection(service)
+    await connection.publish()
     return await connection.run()

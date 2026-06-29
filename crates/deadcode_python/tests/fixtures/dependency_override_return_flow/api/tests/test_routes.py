@@ -8,6 +8,9 @@ class FakeService:
     async def run(self) -> str:
         return "fake"
 
+    async def publish(self, channel: str, data: str) -> None:
+        pass
+
     def unused(self) -> str:
         return "dead"
 

@@ -310,6 +310,12 @@ fn compute_live_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String
                 let concrete_types = concrete_flows.entry(flow_key.clone()).or_default();
                 if concrete_types.insert(concrete_type) && live.contains(&call_argument.callee) {
                     queue.push_back(call_argument.callee.clone());
+                    requeue_live_init_dependent_methods(
+                        &call_argument.callee,
+                        &symbol_kinds,
+                        &live,
+                        &mut queue,
+                    );
                 }
             }
         }
@@ -390,6 +396,26 @@ fn root_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String> {
 fn push_live(target: &str, live: &mut HashSet<String>, queue: &mut VecDeque<String>) {
     if live.insert(target.to_string()) {
         queue.push_back(target.to_string());
+    }
+}
+
+fn requeue_live_init_dependent_methods(
+    callee: &str,
+    symbol_kinds: &HashMap<String, SymbolKind>,
+    live: &HashSet<String>,
+    queue: &mut VecDeque<String>,
+) {
+    let Some(class_name) = callee.strip_suffix(".__init__") else {
+        return;
+    };
+    let method_prefix = format!("{class_name}.");
+    for (symbol, kind) in symbol_kinds {
+        if *kind == SymbolKind::Method
+            && symbol.starts_with(&method_prefix)
+            && live.contains(symbol)
+        {
+            queue.push_back(symbol.clone());
+        }
     }
 }
 

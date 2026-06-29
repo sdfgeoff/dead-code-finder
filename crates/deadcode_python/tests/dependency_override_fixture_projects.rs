@@ -9,6 +9,7 @@ fn dependency_override_return_flow_marks_fake_methods_live() {
 
     assert!(report.diagnostics.is_empty());
     assert!(!symbols.contains(&"api.tests.test_routes.FakeService.run".to_string()));
+    assert!(!symbols.contains(&"api.tests.test_routes.FakeService.publish".to_string()));
     assert!(symbols.contains(&"api.tests.test_routes.FakeService.unused".to_string()));
 }
 
