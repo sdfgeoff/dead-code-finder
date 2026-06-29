@@ -189,6 +189,7 @@ class ExampleEntity:
             root_groups: vec![crate::config::LoadedRootGroup {
                 name: "main".to_string(),
                 entrypoints: Vec::new(),
+                counts_as_used: true,
             }],
             include_tests: false,
             test_patterns: Vec::new(),

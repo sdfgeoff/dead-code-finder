@@ -120,9 +120,12 @@ fn loads_json_config() {
 
     assert_eq!(loaded.root_groups[0].name, "main");
     assert_eq!(loaded.root_groups[0].entrypoints, vec!["main.py"]);
+    assert!(loaded.root_groups[0].counts_as_used);
     assert_eq!(loaded.root_groups[1].name, "weak");
     assert_eq!(loaded.root_groups[1].entrypoints, vec!["scripts/*.py"]);
+    assert!(!loaded.root_groups[1].counts_as_used);
     assert_eq!(loaded.root_groups[2].name, "test");
+    assert!(!loaded.root_groups[2].counts_as_used);
     assert!(loaded.include_tests);
     assert_eq!(loaded.roots[0].module, "pkg");
     assert_eq!(loaded.rules.class_surfaces[0].base, "pkg.orm.Base");
@@ -138,7 +141,12 @@ fn loads_configured_root_groups() {
             "roots": [{"path": "pkg", "module": "pkg"}],
             "rootGroups": [
                 {"name": "production", "entrypoints": ["pkg/app.py"]},
-                {"name": "scripts", "entrypoints": ["pkg/scripts/**/*.py"]}
+                {
+                    "name": "scripts",
+                    "entrypoints": ["pkg/scripts/**/*.py"],
+                    "countsAsUsed": true
+                },
+                {"name": "test", "entrypoints": ["pkg/tests/**/*.py"]}
             ]
         }"#,
     )
@@ -148,11 +156,16 @@ fn loads_configured_root_groups() {
 
     assert_eq!(loaded.root_groups[0].name, "production");
     assert_eq!(loaded.root_groups[0].entrypoints, vec!["pkg/app.py"]);
+    assert!(loaded.root_groups[0].counts_as_used);
     assert_eq!(loaded.root_groups[1].name, "scripts");
     assert_eq!(
         loaded.root_groups[1].entrypoints,
         vec!["pkg/scripts/**/*.py"]
     );
+    assert!(loaded.root_groups[1].counts_as_used);
+    assert_eq!(loaded.root_groups[2].name, "test");
+    assert_eq!(loaded.root_groups[2].entrypoints, vec!["pkg/tests/**/*.py"]);
+    assert!(!loaded.root_groups[2].counts_as_used);
 }
 
 #[test]

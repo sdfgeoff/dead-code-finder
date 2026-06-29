@@ -701,6 +701,7 @@ live()
             root_groups: vec![crate::config::LoadedRootGroup {
                 name: "main".to_string(),
                 entrypoints,
+                counts_as_used: true,
             }],
             include_tests: false,
             test_patterns: Vec::new(),

@@ -35,6 +35,8 @@ pub struct RootGroupConfig {
     pub name: String,
     #[serde(default)]
     pub entrypoints: Vec<String>,
+    #[serde(default)]
+    pub counts_as_used: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +54,7 @@ pub struct LoadedProjectConfig {
 pub struct LoadedRootGroup {
     pub name: String,
     pub entrypoints: Vec<String>,
+    pub counts_as_used: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
@@ -274,23 +277,29 @@ fn root_groups(config: &ProjectConfig) -> Result<Vec<LoadedRootGroup>, ConfigErr
         groups.push(LoadedRootGroup {
             name: "main".to_string(),
             entrypoints: config.entrypoints.clone(),
+            counts_as_used: true,
         });
     } else {
-        groups.extend(config.root_groups.iter().map(|group| LoadedRootGroup {
-            name: group.name.clone(),
-            entrypoints: group.entrypoints.clone(),
+        groups.extend(config.root_groups.iter().enumerate().map(|(index, group)| {
+            LoadedRootGroup {
+                name: group.name.clone(),
+                entrypoints: group.entrypoints.clone(),
+                counts_as_used: group.counts_as_used.unwrap_or(index == 0),
+            }
         }));
     }
     if !config.weak_entrypoints.is_empty() {
         groups.push(LoadedRootGroup {
             name: "weak".to_string(),
             entrypoints: config.weak_entrypoints.clone(),
+            counts_as_used: false,
         });
     }
     if config.include_tests {
         groups.push(LoadedRootGroup {
             name: "test".to_string(),
             entrypoints: config.test_patterns.clone(),
+            counts_as_used: false,
         });
     }
     validate_root_groups(&groups)

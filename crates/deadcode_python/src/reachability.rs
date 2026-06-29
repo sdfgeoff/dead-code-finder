@@ -18,10 +18,7 @@ mod reachability_protocol;
 
 pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
     let live_by_group = compute_live_symbols_by_group(index);
-    let primary_live = live_by_group
-        .get(&index.primary_root_group)
-        .cloned()
-        .unwrap_or_default();
+    let counted_live = counted_live_symbols(index, &live_by_group);
     let mut findings = Vec::new();
     for module in &index.modules {
         for symbol in &module.symbols {
@@ -38,7 +35,7 @@ pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
                     symbol.kind.clone(),
                     symbol.span.clone(),
                 ));
-            } else if !primary_live.contains(&symbol.qualified_name) {
+            } else if !counted_live.contains(&symbol.qualified_name) {
                 let reachable_from = reachable_from_groups(index, &live_by_group, symbol);
                 findings.push(
                     Finding::unused(
@@ -62,6 +59,19 @@ pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
     let mut seen_symbols = HashSet::new();
     findings.retain(|finding| seen_symbols.insert(finding.symbol.clone()));
     findings
+}
+
+fn counted_live_symbols(
+    index: &SymbolIndex,
+    live_by_group: &HashMap<String, HashSet<String>>,
+) -> HashSet<String> {
+    let mut live = HashSet::new();
+    for group in &index.counts_as_used_root_groups {
+        if let Some(group_live) = live_by_group.get(group) {
+            live.extend(group_live.iter().cloned());
+        }
+    }
+    live
 }
 
 pub fn unresolved_receiver_diagnostics(index: &SymbolIndex) -> Vec<Diagnostic> {

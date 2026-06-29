@@ -21,6 +21,7 @@ pub struct SymbolIndex {
     pub parse_diagnostics: Vec<ParseDiagnostic>,
     pub include_tests: bool,
     pub root_groups: Vec<String>,
+    pub counts_as_used_root_groups: Vec<String>,
     pub primary_root_group: String,
     pub class_surfaces: Vec<String>,
     pub route_globs: Vec<ResolvedRouteGlob>,
@@ -258,6 +259,12 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
     index.root_groups = config
         .root_groups
         .iter()
+        .map(|group| group.name.clone())
+        .collect();
+    index.counts_as_used_root_groups = config
+        .root_groups
+        .iter()
+        .filter(|group| group.counts_as_used)
         .map(|group| group.name.clone())
         .collect();
     index.class_surfaces = config
