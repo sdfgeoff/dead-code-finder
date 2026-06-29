@@ -12,4 +12,5 @@ def _get_sync_client() -> SyncClient:
 
 
 def publish_event() -> None:
-    _get_sync_client().publish("updates", "payload")
+    client = _get_sync_client()
+    client.publish("updates", "payload")

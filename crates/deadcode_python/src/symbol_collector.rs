@@ -18,6 +18,8 @@ mod symbol_call_args;
 mod symbol_call_references;
 #[path = "symbol_callable_alias.rs"]
 mod symbol_callable_alias;
+#[path = "symbol_callable_return_locals.rs"]
+mod symbol_callable_return_locals;
 #[path = "symbol_class_definition.rs"]
 mod symbol_class_definition;
 #[path = "symbol_comprehension_narrowing.rs"]
@@ -412,6 +414,7 @@ impl SymbolCollector<'_> {
         for statement in &function.body {
             self.collect_statement_references(owner, statement, &mut types);
         }
+        self.collect_callable_return_local_member_uses(owner, &function.body);
     }
 }
 
