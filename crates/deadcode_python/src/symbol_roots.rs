@@ -3,11 +3,12 @@ use std::path::Path;
 use deadcode_core::SymbolKind;
 
 use crate::config::LoadedProjectConfig;
-use crate::symbol_index::{IndexedSymbol, RootSymbol};
+use crate::symbol_index::{IndexedSymbol, PytestFixture, RootSymbol};
 
 pub(crate) fn root_symbols_for_module(
     module: &str,
     symbols: &[IndexedSymbol],
+    pytest_fixtures: &[PytestFixture],
     primary_root_group: &str,
     configured_root_groups: Vec<String>,
     is_test: bool,
@@ -27,6 +28,7 @@ pub(crate) fn root_symbols_for_module(
     for group in configured_root_groups {
         if is_test {
             roots.extend(test_function_roots(symbols, &group));
+            roots.extend(autouse_fixture_roots(pytest_fixtures, &group));
         } else {
             roots.push(RootSymbol {
                 group,
@@ -35,6 +37,17 @@ pub(crate) fn root_symbols_for_module(
         }
     }
     roots
+}
+
+fn autouse_fixture_roots(pytest_fixtures: &[PytestFixture], group: &str) -> Vec<RootSymbol> {
+    pytest_fixtures
+        .iter()
+        .filter(|fixture| fixture.autouse)
+        .map(|fixture| RootSymbol {
+            group: group.to_string(),
+            symbol: fixture.function.clone(),
+        })
+        .collect()
 }
 
 pub(crate) fn root_groups_for_file(config: &LoadedProjectConfig, file: &Path) -> Vec<String> {

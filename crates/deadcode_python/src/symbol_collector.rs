@@ -104,7 +104,7 @@ use self::symbol_rules::{
 };
 use super::{
     AccessKind, CallArgumentType, ClassInfo, FunctionSignature, IndexedSymbol, MemberReference,
-    ResolvedImport, SourceLocator, SymbolReference, TypeBinding, UnresolvedReceiver,
+    PytestFixture, ResolvedImport, SourceLocator, SymbolReference, TypeBinding, UnresolvedReceiver,
     UnsupportedExpansion, ValueBinding,
 };
 use crate::config::RuleConfig;
@@ -122,6 +122,7 @@ pub(super) struct SymbolCollector<'a> {
     pub(super) available_values: &'a [ValueBinding],
     pub(super) available_fn_sigs: &'a [FunctionSignature],
     pub(super) fn_sigs: &'a mut Vec<FunctionSignature>,
+    pub(super) pytest_fixtures: &'a mut Vec<PytestFixture>,
     pub(super) call_args: &'a mut Vec<CallArgumentType>,
     pub(super) references: &'a mut Vec<SymbolReference>,
     pub(super) member_refs: &'a mut Vec<MemberReference>,
@@ -330,6 +331,11 @@ impl SymbolCollector<'_> {
             })
             .unwrap_or_else(|| format!("{}.{}", self.module, function.name.as_str()));
         for decorator in &function.decorator_list {
+            if let Some(fixture) =
+                pytest_fixture_from_decorator(&function_owner, function, &decorator.expression)
+            {
+                self.pytest_fixtures.push(fixture);
+            }
             if decorator_registers_function(
                 self.module,
                 self.imports,
@@ -398,4 +404,77 @@ impl SymbolCollector<'_> {
             self.collect_statement_references(owner, statement, &mut types);
         }
     }
+}
+
+fn pytest_fixture_from_decorator(
+    function_owner: &str,
+    function: &ast::StmtFunctionDef,
+    decorator: &ast::Expr,
+) -> Option<PytestFixture> {
+    let (callee, call) = match decorator {
+        ast::Expr::Call(call) => (call.func.as_ref(), Some(call)),
+        expr => (expr, None),
+    };
+    if !is_pytest_fixture_callee(callee) {
+        return None;
+    }
+    Some(PytestFixture {
+        name: call
+            .and_then(pytest_fixture_name)
+            .unwrap_or_else(|| function.name.as_str().to_string()),
+        function: function_owner.to_string(),
+        autouse: call.is_some_and(pytest_fixture_is_autouse),
+    })
+}
+
+fn is_pytest_fixture_callee(callee: &ast::Expr) -> bool {
+    match callee {
+        ast::Expr::Name(name) => name.id.as_str() == "fixture",
+        ast::Expr::Attribute(attribute) => {
+            attribute.attr.as_str() == "fixture"
+                && matches!(
+                    attribute.value.as_ref(),
+                    ast::Expr::Name(receiver) if receiver.id.as_str() == "pytest"
+                )
+        }
+        _ => false,
+    }
+}
+
+fn pytest_fixture_name(call: &ast::ExprCall) -> Option<String> {
+    call.arguments
+        .keywords
+        .iter()
+        .find(|keyword| {
+            keyword
+                .arg
+                .as_ref()
+                .is_some_and(|arg| arg.as_str() == "name")
+        })
+        .and_then(|keyword| string_literal(&keyword.value))
+}
+
+fn pytest_fixture_is_autouse(call: &ast::ExprCall) -> bool {
+    call.arguments
+        .keywords
+        .iter()
+        .find(|keyword| {
+            keyword
+                .arg
+                .as_ref()
+                .is_some_and(|arg| arg.as_str() == "autouse")
+        })
+        .is_some_and(|keyword| {
+            matches!(
+                &keyword.value,
+                ast::Expr::BooleanLiteral(ast::ExprBooleanLiteral { value: true, .. })
+            )
+        })
+}
+
+fn string_literal(expr: &ast::Expr) -> Option<String> {
+    let ast::Expr::StringLiteral(string) = expr else {
+        return None;
+    };
+    Some(string.value.to_str().to_string())
 }

@@ -2,7 +2,9 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use deadcode_core::{Diagnostic, Finding, Severity, SymbolKind};
 
-use crate::symbol_index::{ClassInfo, FunctionSignature, ImportTarget, ModuleIndex, SymbolIndex};
+use crate::symbol_index::{
+    ClassInfo, FunctionSignature, ImportTarget, ModuleIndex, PytestFixture, SymbolIndex,
+};
 
 use self::reachability_class_metadata::{
     mark_configured_live_class_surfaces, mark_live_class_creation_metadata, mark_symbol_owners_live,
@@ -181,6 +183,7 @@ fn compute_live_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String
     let module_map = module_map(index);
     let class_map = class_map(index);
     let signature_map = function_signature_map(index);
+    let fixture_map = pytest_fixture_map(index);
     let mut concrete_flows: HashMap<(String, String), HashSet<String>> = HashMap::new();
     let mut live = root_symbols(index, root_group);
     let mut queue = live.iter().cloned().collect::<VecDeque<_>>();
@@ -205,6 +208,17 @@ fn compute_live_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String
             let model_config = format!("{owner}.model_config");
             if symbol_kinds.contains_key(&model_config) {
                 push_live(&model_config, &mut live, &mut queue);
+            }
+        }
+
+        if let Some(signature) = signature_map.get(owner.as_str()) {
+            for parameter in &signature.parameters {
+                if matches!(parameter.name.as_str(), "self" | "cls") {
+                    continue;
+                }
+                if let Some(fixture) = fixture_map.get(parameter.name.as_str()) {
+                    push_live(&fixture.function, &mut live, &mut queue);
+                }
             }
         }
 
@@ -357,6 +371,19 @@ fn function_signature_map(index: &SymbolIndex) -> HashMap<String, FunctionSignat
         for signature in &module.function_signatures {
             map.insert(signature.function.clone(), signature.clone());
         }
+    }
+    map
+}
+
+fn pytest_fixture_map(index: &SymbolIndex) -> HashMap<String, PytestFixture> {
+    let mut map = HashMap::new();
+    for fixture in index
+        .modules
+        .iter()
+        .filter(|module| module.is_test)
+        .flat_map(|module| &module.pytest_fixtures)
+    {
+        map.insert(fixture.name.clone(), fixture.clone());
     }
     map
 }

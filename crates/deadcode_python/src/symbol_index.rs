@@ -43,6 +43,7 @@ pub struct ModuleIndex {
     pub classes: Vec<ClassInfo>,
     pub value_bindings: Vec<ValueBinding>,
     pub function_signatures: Vec<FunctionSignature>,
+    pub pytest_fixtures: Vec<PytestFixture>,
     pub call_argument_types: Vec<CallArgumentType>,
     pub references: Vec<SymbolReference>,
     pub member_references: Vec<MemberReference>,
@@ -122,6 +123,13 @@ pub struct FunctionSignature {
 pub struct FunctionParameter {
     pub name: String,
     pub annotation: Option<TypeBinding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PytestFixture {
+    pub name: String,
+    pub function: String,
+    pub autouse: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -509,6 +517,7 @@ fn index_module(
     let mut classes = Vec::new();
     let mut value_bindings = Vec::new();
     let mut function_signatures = Vec::new();
+    let mut pytest_fixtures = Vec::new();
     let mut call_argument_types = Vec::new();
     let mut references = Vec::new();
     let mut member_references = Vec::new();
@@ -533,6 +542,7 @@ fn index_module(
                 available_fn_sigs,
                 reexports,
                 fn_sigs: &mut function_signatures,
+                pytest_fixtures: &mut pytest_fixtures,
                 call_args: &mut call_argument_types,
                 references: &mut references,
                 member_refs: &mut member_references,
@@ -557,6 +567,7 @@ fn index_module(
     let root_symbols = root_symbols_for_module(
         module,
         &symbols,
+        &pytest_fixtures,
         primary_root_group,
         configured_root_groups,
         is_test,
@@ -572,6 +583,7 @@ fn index_module(
             classes,
             value_bindings,
             function_signatures,
+            pytest_fixtures,
             call_argument_types,
             references,
             member_references,
