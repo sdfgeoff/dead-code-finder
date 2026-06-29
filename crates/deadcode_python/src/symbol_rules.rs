@@ -230,6 +230,31 @@ pub(super) fn callable_argument_references(
     references
 }
 
+pub(super) fn callable_dependency_argument(
+    module: &str,
+    imports: &[ResolvedImport],
+    rules: &RuleConfig,
+    expr: &ast::Expr,
+    types: &HashMap<String, TypeBinding>,
+) -> Option<String> {
+    let ast::Expr::Call(call) = expr else {
+        return None;
+    };
+    let callee = callable_identity(module, imports, &call.func);
+    for rule in &rules.calls {
+        if rule.effect != "useCallableArgument"
+            || !call_rule_matches(rule, call, callee.as_deref(), types)
+        {
+            continue;
+        }
+        let Some(argument) = call.arguments.args.get(rule.argument) else {
+            continue;
+        };
+        return callable_identity(module, imports, argument);
+    }
+    None
+}
+
 fn call_rule_matches(
     rule: &crate::config::CallRule,
     call: &ast::ExprCall,

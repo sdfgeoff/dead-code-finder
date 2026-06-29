@@ -1,5 +1,6 @@
 use ruff_python_ast as ast;
 
+use crate::config::RuleConfig;
 use crate::symbol_index::{
     ClassFieldInfo, ClassInfo, FieldAnnotation, FunctionParameter, FunctionSignature,
     ResolvedImport, TypeBinding, ValueBinding,
@@ -7,6 +8,7 @@ use crate::symbol_index::{
 
 use super::symbol_aliases::expand_alias_binding;
 use super::symbol_expr::self_attribute_name;
+use super::symbol_rules::callable_dependency_argument;
 use super::symbol_types::{type_binding_from_annotation_expr, type_binding_from_expr};
 
 pub(super) fn class_info(
@@ -42,19 +44,25 @@ pub(super) fn class_info(
 pub(super) fn function_signature(
     module: &str,
     imports: &[ResolvedImport],
+    rules: &RuleConfig,
     function: &str,
     function_def: &ast::StmtFunctionDef,
 ) -> FunctionSignature {
+    let empty_types = std::collections::HashMap::new();
     let parameters = function_def
         .parameters
         .iter()
-        .map(|parameter| {
-            let parameter = parameter.as_parameter();
+        .map(|parameter_with_default| {
+            let dependency = parameter_with_default.default().and_then(|default| {
+                callable_dependency_argument(module, imports, rules, default, &empty_types)
+            });
+            let parameter = parameter_with_default.as_parameter();
             FunctionParameter {
                 name: parameter.name.as_str().to_string(),
                 annotation: parameter.annotation().and_then(|annotation| {
                     type_binding_from_annotation_expr(module, imports, annotation)
                 }),
+                dependency,
             }
         })
         .collect();

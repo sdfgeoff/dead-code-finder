@@ -7,7 +7,7 @@ use super::symbol_iteration::bind_collection_unpack_target;
 use super::symbol_metadata::function_signature;
 use super::symbol_types::type_binding_from_annotation_expr;
 use super::SymbolCollector;
-use crate::symbol_index::{ResolvedImport, TypeBinding};
+use crate::symbol_index::{FunctionDependency, ResolvedImport, TypeBinding};
 
 impl SymbolCollector<'_> {
     pub(super) fn push_function_signature(
@@ -16,7 +16,13 @@ impl SymbolCollector<'_> {
         function_def: &ast::StmtFunctionDef,
         types: &HashMap<String, TypeBinding>,
     ) {
-        let mut signature = function_signature(self.module, self.imports, function, function_def);
+        let mut signature = function_signature(
+            self.module,
+            self.imports,
+            self.rules,
+            function,
+            function_def,
+        );
         let inferred = self.inferred_function_return(function_def, types);
         if let (Some(explicit), Some(inferred)) = (&signature.return_type, &inferred) {
             if explicit.args.is_empty() && self.is_subclass_or_same(&inferred.base, &explicit.base)
@@ -33,6 +39,14 @@ impl SymbolCollector<'_> {
             }
             (explicit, _) => explicit,
         };
+        self.function_dependencies
+            .extend(signature.parameters.iter().filter_map(|parameter| {
+                Some(FunctionDependency {
+                    function: signature.function.clone(),
+                    parameter_type: parameter.annotation.clone()?,
+                    dependency: parameter.dependency.clone()?,
+                })
+            }));
         self.fn_sigs.push(signature);
     }
 

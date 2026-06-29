@@ -105,9 +105,10 @@ use self::symbol_rules::{
     decorator_registers_function,
 };
 use super::{
-    AccessKind, CallArgumentType, ClassInfo, FunctionSignature, IndexedSymbol, MemberReference,
-    ModuleValue, PytestFixture, ResolvedImport, SourceLocator, SymbolReference, TypeBinding,
-    UnresolvedReceiver, UnsupportedExpansion, ValueBinding,
+    AccessKind, CallArgumentType, ClassInfo, DependencyOverride, FunctionDependency,
+    FunctionSignature, IndexedSymbol, MemberReference, ModuleValue, PytestFixture, ResolvedImport,
+    SourceLocator, SymbolReference, TypeBinding, UnresolvedReceiver, UnsupportedExpansion,
+    ValueBinding,
 };
 use crate::config::RuleConfig;
 use crate::symbol_index::ReexportMap;
@@ -126,6 +127,8 @@ pub(super) struct SymbolCollector<'a> {
     pub(super) available_fn_sigs: &'a [FunctionSignature],
     pub(super) fn_sigs: &'a mut Vec<FunctionSignature>,
     pub(super) pytest_fixtures: &'a mut Vec<PytestFixture>,
+    pub(super) function_dependencies: &'a mut Vec<FunctionDependency>,
+    pub(super) dependency_overrides: &'a mut Vec<DependencyOverride>,
     pub(super) call_args: &'a mut Vec<CallArgumentType>,
     pub(super) references: &'a mut Vec<SymbolReference>,
     pub(super) member_refs: &'a mut Vec<MemberReference>,

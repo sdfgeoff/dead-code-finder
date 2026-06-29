@@ -1,0 +1,34 @@
+{
+  "roots": [{ "path": "api", "module": "api" }],
+  "entrypoints": ["api/app.py"],
+  "includeTests": true,
+  "rules": {
+    "constructors": [
+      { "match": "api.framework.App", "producesType": "api.framework.App" },
+      { "match": "api.framework.Router", "producesType": "api.framework.Router" }
+    ],
+    "decorators": [
+      {
+        "receiverType": "api.framework.Router",
+        "methods": ["get"],
+        "effect": "registerDecoratedFunction"
+      }
+    ],
+    "calls": [
+      { "function": "api.framework.Depends", "effect": "useCallableArgument", "argument": 0 },
+      {
+        "receiverType": "api.framework.App",
+        "method": "include_router",
+        "effect": "connectRouter",
+        "argument": 0
+      }
+    ],
+    "assignments": [
+      {
+        "receiverType": "api.framework.App",
+        "member": "dependency_overrides",
+        "effect": "overrideCallableReturn"
+      }
+    ]
+  }
+}

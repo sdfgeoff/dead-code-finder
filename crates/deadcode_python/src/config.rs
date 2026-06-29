@@ -71,6 +71,8 @@ pub struct RuleConfig {
     #[serde(default)]
     pub calls: Vec<CallRule>,
     #[serde(default)]
+    pub assignments: Vec<AssignmentRule>,
+    #[serde(default)]
     pub fluent_methods: Vec<FluentMethodRule>,
     #[serde(default)]
     pub route_globs: Vec<RouteGlobRule>,
@@ -138,6 +140,14 @@ pub struct CallRule {
     pub member: Option<String>,
     pub effect: String,
     pub argument: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssignmentRule {
+    pub receiver_type: String,
+    pub member: String,
+    pub effect: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -484,6 +494,18 @@ fn validate_rules(rules: &RuleConfig) -> Result<(), ConfigError> {
         if route_glob.effect != "includeRouter" {
             return Err(ConfigError::InvalidRule {
                 message: format!("unsupported route glob effect {}", route_glob.effect),
+            });
+        }
+    }
+    for assignment in &rules.assignments {
+        if !matches!(assignment.effect.as_str(), "overrideCallableReturn") {
+            return Err(ConfigError::InvalidRule {
+                message: format!("unsupported assignment effect {}", assignment.effect),
+            });
+        }
+        if assignment.receiver_type.trim().is_empty() || assignment.member.trim().is_empty() {
+            return Err(ConfigError::InvalidRule {
+                message: "assignment rules require receiverType and member".to_string(),
             });
         }
     }

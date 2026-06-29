@@ -3,7 +3,8 @@ use std::collections::{HashMap, HashSet};
 use deadcode_core::SymbolKind;
 
 use crate::symbol_index::{
-    ClassInfo, FunctionSignature, ImportTarget, ModuleIndex, PytestFixture, SymbolIndex,
+    ClassInfo, DependencyOverride, FunctionDependency, FunctionSignature, ImportTarget,
+    ModuleIndex, PytestFixture, SymbolIndex,
 };
 
 pub(super) fn module_map(index: &SymbolIndex) -> HashMap<&str, &ModuleIndex> {
@@ -77,6 +78,22 @@ pub(super) fn pytest_fixture_map(index: &SymbolIndex) -> HashMap<String, PytestF
         map.insert(fixture.name.clone(), fixture.clone());
     }
     map
+}
+
+pub(super) fn function_dependencies(index: &SymbolIndex) -> Vec<FunctionDependency> {
+    index
+        .modules
+        .iter()
+        .flat_map(|module| module.function_dependencies.iter().cloned())
+        .collect()
+}
+
+pub(super) fn dependency_overrides(index: &SymbolIndex) -> Vec<DependencyOverride> {
+    index
+        .modules
+        .iter()
+        .flat_map(|module| module.dependency_overrides.iter().cloned())
+        .collect()
 }
 
 pub(super) fn imported_module_target(target: &ImportTarget) -> Option<&str> {

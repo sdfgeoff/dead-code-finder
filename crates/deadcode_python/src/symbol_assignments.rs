@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 
 use ruff_python_ast as ast;
+use ruff_text_size::Ranged;
 
 use super::symbol_aliases::expand_alias_binding;
 use super::symbol_expr::target_name;
 use super::symbol_iteration::bind_collection_unpack_target;
+use super::symbol_rules::callable_identity;
 use super::symbol_types::type_binding_from_expr;
 use super::SymbolCollector;
-use crate::symbol_index::TypeBinding;
+use crate::symbol_index::{DependencyOverride, TypeBinding};
 
 impl SymbolCollector<'_> {
     pub(super) fn collect_assign_references(
@@ -27,6 +29,7 @@ impl SymbolCollector<'_> {
         }
         for target in &assign.targets {
             self.collect_assignment_target(owner, target, types);
+            self.collect_dependency_override(owner, target, &assign.value, types);
         }
         if let Some(mut type_name) = self.assignment_value_binding(&assign.value, types) {
             self.mark_external_if_outside_project(&mut type_name);
@@ -42,6 +45,88 @@ impl SymbolCollector<'_> {
                 }
             }
         }
+    }
+
+    fn collect_dependency_override(
+        &mut self,
+        owner: &str,
+        target: &ast::Expr,
+        value: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) {
+        let Some((dependency, target_range)) = self.dependency_override_target(target, types)
+        else {
+            return;
+        };
+        let Some(concrete_type) = self.override_return_binding(value, types) else {
+            return;
+        };
+        self.dependency_overrides.push(DependencyOverride {
+            from: owner.to_string(),
+            dependency,
+            concrete_type: concrete_type.base,
+            span: self.locator.span_from_range_string(self.file, target_range),
+        });
+    }
+
+    fn dependency_override_target(
+        &self,
+        target: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<(String, ruff_text_size::TextRange)> {
+        let ast::Expr::Subscript(subscript) = target else {
+            return None;
+        };
+        let ast::Expr::Attribute(attribute) = subscript.value.as_ref() else {
+            return None;
+        };
+        for rule in &self.rules.assignments {
+            if rule.effect != "overrideCallableReturn" || attribute.attr.as_str() != rule.member {
+                continue;
+            }
+            let receiver_type = self.receiver_type_for_expr(&attribute.value, types)?;
+            if receiver_type.base != rule.receiver_type {
+                continue;
+            }
+            let dependency = callable_identity(self.module, self.imports, &subscript.slice)?;
+            return Some((dependency, subscript.slice.range()));
+        }
+        None
+    }
+
+    fn override_return_binding(
+        &self,
+        value: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        if let ast::Expr::Lambda(lambda) = value {
+            return self.expression_or_name_binding(&lambda.body, types);
+        }
+        self.expression_or_name_binding(value, types)
+    }
+
+    fn expression_or_name_binding(
+        &self,
+        expr: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        if let ast::Expr::Name(name) = expr {
+            if let Some(binding) = types.get(name.id.as_str()) {
+                return Some(binding.clone());
+            }
+            let callable = callable_identity(self.module, self.imports, expr)?;
+            return self
+                .available_fn_sigs
+                .iter()
+                .find(|signature| signature.function == callable)
+                .and_then(|signature| {
+                    signature
+                        .concrete_return_type
+                        .clone()
+                        .or_else(|| signature.return_type.clone())
+                });
+        }
+        self.assignment_value_binding(expr, types)
     }
 
     pub(super) fn collect_ann_assign_references(

@@ -10,8 +10,9 @@ use self::reachability_class_metadata::{
 use self::reachability_concrete_flow::{concrete_flow_base, concrete_flow_candidates};
 use self::reachability_concrete_return::propagate_concrete_return_flows;
 use self::reachability_maps::{
-    class_map, function_signature_map, imported_module_target, module_map, module_value_set,
-    owner_module, pytest_fixture_map, resolve_reference, symbol_kind_map, symbol_module_map,
+    class_map, dependency_overrides, function_dependencies, function_signature_map,
+    imported_module_target, module_map, module_value_set, owner_module, pytest_fixture_map,
+    resolve_reference, symbol_kind_map, symbol_module_map,
 };
 
 #[path = "reachability_class_metadata.rs"]
@@ -192,6 +193,8 @@ fn compute_live_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String
     let class_map = class_map(index);
     let signature_map = function_signature_map(index);
     let fixture_map = pytest_fixture_map(index);
+    let function_dependencies = function_dependencies(index);
+    let dependency_overrides = dependency_overrides(index);
     let mut concrete_flows: HashMap<(String, String), HashSet<String>> = HashMap::new();
     let mut live = root_symbols(index, root_group);
     let mut queue = live.iter().cloned().collect::<VecDeque<_>>();
@@ -226,6 +229,38 @@ fn compute_live_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String
                 }
                 if let Some(fixture) = fixture_map.get(parameter.name.as_str()) {
                     push_live(&fixture.function, &mut live, &mut queue);
+                }
+            }
+        }
+
+        for dependency_override in dependency_overrides
+            .iter()
+            .filter(|dependency_override| dependency_override.from == owner)
+        {
+            for dependency in function_dependencies
+                .iter()
+                .filter(|dependency| dependency.dependency == dependency_override.dependency)
+            {
+                let Some((base_type, requires_subclass_check)) =
+                    concrete_flow_base(&dependency.parameter_type)
+                else {
+                    continue;
+                };
+                if requires_subclass_check
+                    && !is_subclass_or_same(
+                        &dependency_override.concrete_type,
+                        base_type,
+                        &class_map,
+                        &symbol_kinds,
+                    )
+                {
+                    continue;
+                }
+                let concrete_types = concrete_flows
+                    .entry((dependency.function.clone(), base_type.clone()))
+                    .or_default();
+                if concrete_types.insert(dependency_override.concrete_type.clone()) {
+                    queue.push_back(dependency.function.clone());
                 }
             }
         }

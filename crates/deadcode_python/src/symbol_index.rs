@@ -45,6 +45,8 @@ pub struct ModuleIndex {
     pub module_values: Vec<ModuleValue>,
     pub function_signatures: Vec<FunctionSignature>,
     pub pytest_fixtures: Vec<PytestFixture>,
+    pub function_dependencies: Vec<FunctionDependency>,
+    pub dependency_overrides: Vec<DependencyOverride>,
     pub call_argument_types: Vec<CallArgumentType>,
     pub references: Vec<SymbolReference>,
     pub member_references: Vec<MemberReference>,
@@ -130,6 +132,7 @@ pub struct FunctionSignature {
 pub struct FunctionParameter {
     pub name: String,
     pub annotation: Option<TypeBinding>,
+    pub dependency: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,6 +140,21 @@ pub struct PytestFixture {
     pub name: String,
     pub function: String,
     pub autouse: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionDependency {
+    pub function: String,
+    pub parameter_type: TypeBinding,
+    pub dependency: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DependencyOverride {
+    pub from: String,
+    pub dependency: String,
+    pub concrete_type: String,
+    pub span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -526,6 +544,8 @@ fn index_module(
     let mut module_values = Vec::new();
     let mut function_signatures = Vec::new();
     let mut pytest_fixtures = Vec::new();
+    let mut function_dependencies = Vec::new();
+    let mut dependency_overrides = Vec::new();
     let mut call_argument_types = Vec::new();
     let mut references = Vec::new();
     let mut member_references = Vec::new();
@@ -552,6 +572,8 @@ fn index_module(
                 reexports,
                 fn_sigs: &mut function_signatures,
                 pytest_fixtures: &mut pytest_fixtures,
+                function_dependencies: &mut function_dependencies,
+                dependency_overrides: &mut dependency_overrides,
                 call_args: &mut call_argument_types,
                 references: &mut references,
                 member_refs: &mut member_references,
@@ -594,6 +616,8 @@ fn index_module(
             module_values,
             function_signatures,
             pytest_fixtures,
+            function_dependencies,
+            dependency_overrides,
             call_argument_types,
             references,
             member_references,
