@@ -83,12 +83,28 @@ pub(crate) fn is_test_file(config: &LoadedProjectConfig, file: &Path) -> bool {
 fn test_function_roots(symbols: &[IndexedSymbol], group: &str) -> Vec<RootSymbol> {
     symbols
         .iter()
-        .filter(|symbol| symbol.kind == SymbolKind::Function && symbol.name.starts_with("test_"))
+        .filter(|symbol| is_pytest_collected_symbol(symbol))
         .map(|symbol| RootSymbol {
             group: group.to_string(),
             symbol: symbol.qualified_name.clone(),
         })
         .collect()
+}
+
+fn is_pytest_collected_symbol(symbol: &IndexedSymbol) -> bool {
+    match symbol.kind {
+        SymbolKind::Function => symbol.name.starts_with("test_"),
+        SymbolKind::Class => symbol.name.starts_with("Test"),
+        SymbolKind::Method => {
+            symbol.name.starts_with("test_")
+                && symbol
+                    .qualified_name
+                    .rsplit_once('.')
+                    .and_then(|(owner, _)| owner.rsplit_once('.'))
+                    .is_some_and(|(_, class_name)| class_name.starts_with("Test"))
+        }
+        _ => false,
+    }
 }
 
 fn configured_path_matches(config: &LoadedProjectConfig, pattern: &str, file: &Path) -> bool {
