@@ -156,6 +156,23 @@ fn typed_dict_inherited_keys_from_weak_script() {
 }
 
 #[test]
+fn typed_dict_literal_return_constructs_keys() {
+    let report = analyze_fixture("typed_dict_literal_return_constructs_keys");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert_eq!(
+        reachable_from(&report, "pkg.scripts.handlers.HandlerMap.encode"),
+        vec!["weak"]
+    );
+    assert_eq!(
+        reachable_from(&report, "pkg.scripts.handlers.HandlerMap.decode"),
+        vec!["weak"]
+    );
+    assert!(symbols.contains(&"pkg.scripts.handlers.HandlerMap.unused".to_string()));
+}
+
+#[test]
 fn list_slice_preserves_collection_type() {
     let report = analyze_fixture("list_slice_preserves_collection_type");
     let symbols = finding_symbols(&report);

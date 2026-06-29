@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ruff_python_ast as ast;
-use ruff_text_size::TextRange;
+use ruff_text_size::{Ranged, TextRange};
 
 use super::symbol_generics::member_reference_target_bases;
 use super::symbol_members::push_member_reference;
@@ -40,11 +40,7 @@ impl SymbolCollector<'_> {
         range: TextRange,
     ) {
         for base in member_reference_target_bases(receiver_type) {
-            if !class_derives_from_any(
-                self.available_classes,
-                &base,
-                &["typing.TypedDict", "typing_extensions.TypedDict"],
-            ) {
+            if !is_typed_dict(self.available_classes, &base) {
                 continue;
             }
             let Some(target) = typed_dict_key_target(self.available_classes, &base, key) else {
@@ -59,6 +55,27 @@ impl SymbolCollector<'_> {
                 AccessKind::Read,
                 range,
             );
+        }
+    }
+
+    pub(super) fn collect_typed_dict_literal_construction(
+        &mut self,
+        owner: &str,
+        expected_type: &TypeBinding,
+        value: &ast::Expr,
+    ) {
+        let ast::Expr::Dict(dict) = value else {
+            return;
+        };
+        for item in &dict.items {
+            let Some(key) = item
+                .key
+                .as_ref()
+                .and_then(super::symbol_expr::string_literal)
+            else {
+                continue;
+            };
+            self.collect_typed_dict_key_construct(owner, expected_type, key, value.range());
         }
     }
 
@@ -88,17 +105,39 @@ impl SymbolCollector<'_> {
         self.collect_typed_dict_key_reference(owner, &receiver_type, key, call.range);
     }
 
+    fn collect_typed_dict_key_construct(
+        &mut self,
+        owner: &str,
+        receiver_type: &TypeBinding,
+        key: &str,
+        range: TextRange,
+    ) {
+        for base in member_reference_target_bases(receiver_type) {
+            if !is_typed_dict(self.available_classes, &base) {
+                continue;
+            }
+            let Some(target) = typed_dict_key_target(self.available_classes, &base, key) else {
+                continue;
+            };
+            push_member_reference(
+                self.member_refs,
+                self.locator,
+                self.file,
+                owner,
+                target,
+                AccessKind::Construct,
+                range,
+            );
+        }
+    }
+
     fn typed_dict_key_binding(
         &self,
         receiver_type: &TypeBinding,
         key: &str,
     ) -> Option<TypeBinding> {
         for base in member_reference_target_bases(receiver_type) {
-            if !class_derives_from_any(
-                self.available_classes,
-                &base,
-                &["typing.TypedDict", "typing_extensions.TypedDict"],
-            ) {
+            if !is_typed_dict(self.available_classes, &base) {
                 continue;
             }
             let Some(field) = typed_dict_key_field(self.available_classes, &base, key) else {
@@ -149,6 +188,14 @@ fn class_derives_from_any(classes: &[ClassInfo], concrete_type: &str, base_types
     base_types.iter().any(|base_type| {
         class_derives_from_inner(classes, concrete_type, base_type, &mut Vec::new())
     })
+}
+
+fn is_typed_dict(classes: &[ClassInfo], concrete_type: &str) -> bool {
+    class_derives_from_any(
+        classes,
+        concrete_type,
+        &["typing.TypedDict", "typing_extensions.TypedDict"],
+    )
 }
 
 fn class_derives_from_inner(

@@ -54,6 +54,9 @@ impl SymbolCollector<'_> {
             ast::Stmt::Return(ret) => {
                 if let Some(value) = &ret.value {
                     self.record_validated_return_from_expr(owner, value, types);
+                    if let Some(return_type) = self.function_return_type(owner) {
+                        self.collect_typed_dict_literal_construction(owner, &return_type, value);
+                    }
                     self.collect_expr_references(owner, value, types);
                 }
             }
@@ -93,6 +96,13 @@ impl SymbolCollector<'_> {
                     self.collect_assignment_target(owner, &assign.target, types);
                 }
                 if let Some(value) = &assign.value {
+                    if let Some(expected_type) =
+                        type_binding_from_expr(self.module, self.imports, &assign.annotation)
+                    {
+                        let expected_type =
+                            expand_alias_binding(&expected_type, self.available_values);
+                        self.collect_typed_dict_literal_construction(owner, &expected_type, value);
+                    }
                     let validated_type = self.validated_assignment_binding(value, types);
                     self.collect_expr_references(owner, value, types);
                     self.bind_validated_assignment(&assign.target, validated_type.as_ref(), types);
@@ -418,5 +428,17 @@ impl SymbolCollector<'_> {
             .iter()
             .any(|class_info| class_info.class == callee)
             .then(|| format!("{callee}.__init__"))
+    }
+
+    fn function_return_type(&self, owner: &str) -> Option<TypeBinding> {
+        self.available_fn_sigs
+            .iter()
+            .find(|signature| signature.function == owner)
+            .and_then(|signature| {
+                signature
+                    .concrete_return_type
+                    .clone()
+                    .or_else(|| signature.return_type.clone())
+            })
     }
 }
