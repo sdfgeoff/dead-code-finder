@@ -32,6 +32,7 @@ impl SymbolCollector<'_> {
             }
             value @ ast::Expr::Call(_) => self
                 .local_call_return_binding(value, types)
+                .or_else(|| self.pydantic_validation_call_binding(value, types))
                 .or_else(|| expr_type(self.available_classes, value, types)),
             value => expr_type(self.available_classes, value, types)
                 .or_else(|| self.local_call_return_binding(value, types)),

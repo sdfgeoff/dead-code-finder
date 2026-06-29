@@ -73,6 +73,16 @@ fn pydantic_subscripted_model_validate_marks_nested_generic_fields() {
 }
 
 #[test]
+fn pydantic_model_validate_dict_literal_chained_field() {
+    let report = analyze_fixture("pydantic_model_validate_dict_literal_chained_field");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Envelope.item".to_string()));
+    assert!(symbols.contains(&"pkg.main.Envelope.unused".to_string()));
+}
+
+#[test]
 fn live_pydantic_model_marks_model_config() {
     let report = analyze_fixture("live_pydantic_model_marks_model_config");
     let symbols = finding_symbols(&report);
