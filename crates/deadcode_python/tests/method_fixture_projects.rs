@@ -112,6 +112,17 @@ fn type_adapter_validation_marks_default_and_nested_fields() {
 }
 
 #[test]
+fn typed_dict_type_adapter_literal_keys() {
+    let report = analyze_fixture("typed_dict_type_adapter_literal_keys");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.BrokerMessage.kind".to_string()));
+    assert!(!symbols.contains(&"pkg.main.BrokerMessage.payload".to_string()));
+    assert!(symbols.contains(&"pkg.main.BrokerMessage.unused".to_string()));
+}
+
+#[test]
 fn list_slice_preserves_collection_type() {
     let report = analyze_fixture("list_slice_preserves_collection_type");
     let symbols = finding_symbols(&report);

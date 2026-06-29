@@ -72,6 +72,8 @@ mod symbol_references;
 mod symbol_rules;
 #[path = "symbol_statement_flow.rs"]
 mod symbol_statement_flow;
+#[path = "symbol_typed_dict.rs"]
+mod symbol_typed_dict;
 #[path = "symbol_typeflow.rs"]
 mod symbol_typeflow;
 #[path = "symbol_types.rs"]

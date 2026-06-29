@@ -371,6 +371,9 @@ impl SymbolCollector<'_> {
         let Some(receiver_type) = self.expression_flow_binding(&subscript.value, types) else {
             return;
         };
+        if let Some(key) = string_literal(&subscript.slice) {
+            self.collect_typed_dict_key_reference(owner, &receiver_type, key, subscript.range);
+        }
         for base in member_reference_target_bases(&receiver_type) {
             push_member_reference(
                 self.member_refs,
@@ -416,4 +419,11 @@ impl SymbolCollector<'_> {
             .any(|class_info| class_info.class == callee)
             .then(|| format!("{callee}.__init__"))
     }
+}
+
+fn string_literal(expr: &ast::Expr) -> Option<&str> {
+    let ast::Expr::StringLiteral(string) = expr else {
+        return None;
+    };
+    Some(string.value.to_str())
 }
