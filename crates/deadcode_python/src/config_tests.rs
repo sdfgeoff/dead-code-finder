@@ -138,6 +138,16 @@ fn loads_json_config() {
 }
 
 #[test]
+fn missing_explicit_config_is_an_error() {
+    let workspace = test_workspace("missing_explicit_config_is_an_error");
+    let config_path = workspace.join("missing.json");
+
+    let error = load_project_config(&config_path).unwrap_err();
+
+    assert!(matches!(error, ConfigError::ReadFailed { .. }));
+}
+
+#[test]
 fn loads_configured_root_groups() {
     let workspace = test_workspace("loads_configured_root_groups");
     fs::create_dir_all(workspace.join("pkg")).unwrap();

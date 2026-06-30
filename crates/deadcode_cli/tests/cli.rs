@@ -50,6 +50,31 @@ fn json_output_contains_findings_diagnostics_and_summary() {
 }
 
 #[test]
+fn missing_default_config_analyzes_current_directory() {
+    let project = FixtureProject::new("missing_default_config_analyzes_current_directory");
+    project.write(
+        "main.py",
+        r#"
+def live():
+    pass
+
+def dead():
+    pass
+
+if __name__ == "__main__":
+    live()
+"#,
+    );
+
+    let output = project.command_without_config().output().unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("DCF001 unused symbol main.dead"));
+    assert!(stdout.contains("dead-code-finder: 1 finding(s), 0 diagnostic(s)"));
+}
+
+#[test]
 fn unresolved_diagnostics_warn_by_default_and_fail_in_strict_mode() {
     let project = FixtureProject::new("unresolved_diagnostics_warn_by_default");
     project.write(
@@ -139,6 +164,12 @@ impl FixtureProject {
             "--config",
             self.root.join("dead-code-finder.json").to_str().unwrap(),
         ]);
+        command
+    }
+
+    fn command_without_config(&self) -> Command {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_dead-code-finder"));
+        command.current_dir(&self.root);
         command
     }
 }

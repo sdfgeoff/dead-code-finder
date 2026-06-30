@@ -10,7 +10,9 @@ pub(crate) fn module_name_for_file(root: &ResolvedRoot, file: &Path) -> String {
         .map(strip_py_extension)
         .filter(|part| part != "__init__")
         .collect::<Vec<_>>();
-    parts.insert(0, root.module.clone());
+    if !root.module.is_empty() {
+        parts.insert(0, root.module.clone());
+    }
     parts.join(".")
 }
 

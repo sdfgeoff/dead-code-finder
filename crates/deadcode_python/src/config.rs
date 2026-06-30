@@ -267,6 +267,9 @@ pub fn load_project_config(path: &Path) -> Result<LoadedProjectConfig, ConfigErr
     } else {
         path.to_path_buf()
     };
+    if path.as_os_str().is_empty() && !config_path.exists() {
+        return Ok(default_project_config(config_path));
+    }
     let project_dir = config_path
         .parent()
         .map(Path::to_path_buf)
@@ -295,6 +298,26 @@ pub fn load_project_config(path: &Path) -> Result<LoadedProjectConfig, ConfigErr
         test_patterns: config.test_patterns,
         rules: config.rules,
     })
+}
+
+fn default_project_config(config_path: PathBuf) -> LoadedProjectConfig {
+    LoadedProjectConfig {
+        config_path,
+        project_dir: PathBuf::from("."),
+        roots: vec![ResolvedRoot {
+            path: PathBuf::from("."),
+            module: String::new(),
+        }],
+        type_sources: Vec::new(),
+        root_groups: vec![LoadedRootGroup {
+            name: "main".to_string(),
+            entrypoints: Vec::new(),
+            counts_as_used: true,
+        }],
+        include_tests: false,
+        test_patterns: default_test_patterns(),
+        rules: RuleConfig::default(),
+    }
 }
 
 fn root_groups(config: &ProjectConfig) -> Result<Vec<LoadedRootGroup>, ConfigError> {

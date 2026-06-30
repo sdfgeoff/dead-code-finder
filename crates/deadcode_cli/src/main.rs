@@ -61,7 +61,7 @@ enum OutputFormat {
 
 fn parse_options(args: &[String]) -> Result<CliOptions, String> {
     let mut options = CliOptions {
-        config_path: PathBuf::from("dead-code-finder.json"),
+        config_path: PathBuf::new(),
         format: OutputFormat::Text,
         strict: false,
     };

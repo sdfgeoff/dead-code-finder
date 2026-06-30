@@ -192,6 +192,28 @@ class ExampleEntity:
         );
     }
 
+    #[test]
+    fn empty_root_module_names_files_without_leading_dot() {
+        let workspace = test_workspace("empty_root_module_names_files_without_leading_dot");
+        fs::write(workspace.join("main.py"), "def run():\n    pass\n").unwrap();
+        let config = loaded_config(
+            &workspace,
+            vec![ResolvedRoot {
+                path: workspace.clone(),
+                module: String::new(),
+            }],
+        );
+
+        let index = index_project(&config).unwrap();
+
+        assert!(index.modules.iter().any(|module| module.module == "main"));
+        assert!(index
+            .modules
+            .iter()
+            .flat_map(|module| module.symbols.iter())
+            .any(|symbol| symbol.qualified_name == "main.run"));
+    }
+
     fn loaded_config(workspace: &Path, roots: Vec<ResolvedRoot>) -> LoadedProjectConfig {
         LoadedProjectConfig {
             config_path: workspace.join("dead-code-finder.json"),
