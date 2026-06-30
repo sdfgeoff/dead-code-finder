@@ -214,6 +214,38 @@ class ExampleEntity:
             .any(|symbol| symbol.qualified_name == "main.run"));
     }
 
+    #[test]
+    fn recursive_collection_prunes_virtualenv_directories() {
+        let workspace = test_workspace("recursive_collection_prunes_virtualenv_directories");
+        fs::write(workspace.join("main.py"), "def run():\n    pass\n").unwrap();
+        fs::create_dir_all(workspace.join(".venv/lib/python3.12/site-packages/example")).unwrap();
+        fs::write(
+            workspace.join(".venv/lib/python3.12/site-packages/example/package.py"),
+            "def dependency_function():\n    pass\n",
+        )
+        .unwrap();
+        let config = loaded_config(
+            &workspace,
+            vec![ResolvedRoot {
+                path: workspace.clone(),
+                module: String::new(),
+            }],
+        );
+
+        let index = index_project(&config).unwrap();
+
+        assert!(index.modules.iter().any(|module| module.module == "main"));
+        assert!(!index
+            .modules
+            .iter()
+            .any(|module| module.module.contains("site-packages")));
+        assert!(!index
+            .modules
+            .iter()
+            .flat_map(|module| module.symbols.iter())
+            .any(|symbol| symbol.qualified_name.contains("dependency_function")));
+    }
+
     fn loaded_config(workspace: &Path, roots: Vec<ResolvedRoot>) -> LoadedProjectConfig {
         LoadedProjectConfig {
             config_path: workspace.join("dead-code-finder.json"),

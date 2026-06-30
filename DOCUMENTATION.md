@@ -28,6 +28,8 @@ dead-code-finder
 
 Without a `dead-code-finder.json` file, the tool analyzes the current directory as one Python project. It treats `if __name__ == "__main__"` blocks as production entrypoints and reports symbols that are not reachable from those entrypoints. Test files are not production entrypoints by default.
 
+Recursive discovery skips common dependency, cache, and build directories such as `.venv`, `venv`, `env`, `.git`, `__pycache__`, `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `.tox`, `.nox`, `node_modules`, `build`, `dist`, and `target`.
+
 This default is intentionally simple. It is useful for scripts and small projects, but most applications should add a configuration file so framework routes, package roots, generated clients, and auxiliary scripts are modeled explicitly.
 
 Use JSON output for automation:

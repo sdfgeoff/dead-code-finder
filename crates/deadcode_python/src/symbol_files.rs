@@ -26,6 +26,9 @@ pub(super) fn collect_python_files(
         })?;
         let entry_path = entry.path();
         if entry_path.is_dir() {
+            if should_prune_directory(&entry_path) {
+                continue;
+            }
             collect_python_files(&entry_path, files)?;
         } else if is_python_source(&entry_path) {
             files.push(entry_path);
@@ -38,4 +41,29 @@ pub(super) fn collect_python_files(
 fn is_python_source(path: &Path) -> bool {
     path.extension()
         .is_some_and(|extension| matches!(extension.to_str(), Some("py" | "pyi")))
+}
+
+fn should_prune_directory(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    matches!(
+        name,
+        ".git"
+            | ".hg"
+            | ".mypy_cache"
+            | ".nox"
+            | ".pytest_cache"
+            | ".ruff_cache"
+            | ".svn"
+            | ".tox"
+            | ".venv"
+            | "__pycache__"
+            | "build"
+            | "dist"
+            | "env"
+            | "node_modules"
+            | "target"
+            | "venv"
+    )
 }
