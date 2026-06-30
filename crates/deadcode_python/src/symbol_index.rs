@@ -4,6 +4,8 @@ mod source_locator;
 mod symbol_allow_comments;
 #[path = "symbol_collector.rs"]
 mod symbol_collector;
+#[path = "symbol_index_helpers.rs"]
+mod symbol_index_helpers;
 #[path = "symbol_module_path.rs"]
 mod symbol_module_path;
 
@@ -20,6 +22,7 @@ use crate::symbol_roots::{is_test_file, root_groups_for_file, root_symbols_for_m
 pub(crate) use self::source_locator::SourceLocator;
 use self::symbol_allow_comments::{allow_comment_roots, EXPLICITLY_ALLOWED_GROUP};
 use self::symbol_collector::SymbolCollector;
+use self::symbol_index_helpers::{reexport_map, resolve_route_globs};
 use self::symbol_module_path::module_name_for_file;
 
 pub(crate) type ReexportMap = HashMap<(String, String), ImportTarget>;
@@ -463,6 +466,25 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
         all_function_signatures.extend(module_index.module.function_signatures.clone());
     }
 
+    all_value_bindings.clear();
+    for (file, module, reportable) in &project_files {
+        let module_index = index_module(
+            module,
+            file,
+            &index.known_modules,
+            &config.rules,
+            &all_classes,
+            &[],
+            &all_function_signatures,
+            &reexports,
+            &index.primary_root_group,
+            Vec::new(),
+            false,
+            *reportable,
+        )?;
+        all_value_bindings.extend(module_index.module.value_bindings.clone());
+    }
+
     all_classes.clear();
     for (file, module, reportable) in &project_files {
         let module_index = index_module(
@@ -520,50 +542,6 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
     index.known_modules.clear();
 
     Ok(index)
-}
-
-fn reexport_map(modules: &[ModuleIndex]) -> ReexportMap {
-    let mut reexports = ReexportMap::new();
-    for module in modules {
-        for import in &module.imports {
-            reexports.insert(
-                (module.module.clone(), import.binding.clone()),
-                import.target.clone(),
-            );
-        }
-    }
-    reexports
-}
-
-fn resolve_route_globs(
-    config: &LoadedProjectConfig,
-    modules: &[ModuleIndex],
-) -> Vec<ResolvedRouteGlob> {
-    config
-        .rules
-        .route_globs
-        .iter()
-        .map(|rule| {
-            let modules = modules
-                .iter()
-                .filter(|module| route_glob_matches(&config.project_dir, &rule.glob, &module.file))
-                .map(|module| module.module.clone())
-                .collect();
-            ResolvedRouteGlob {
-                when_function_called: rule.when_function_called.clone(),
-                modules,
-            }
-        })
-        .collect()
-}
-
-fn route_glob_matches(project_dir: &Path, pattern: &str, file: &Path) -> bool {
-    let relative = file.strip_prefix(project_dir).unwrap_or(file);
-    let relative = relative.to_string_lossy().replace('\\', "/");
-    if let Some((prefix, suffix)) = pattern.split_once("**") {
-        return relative.starts_with(prefix) && relative.ends_with(suffix.trim_start_matches('/'));
-    }
-    relative == pattern
 }
 
 struct IndexedModuleResult {

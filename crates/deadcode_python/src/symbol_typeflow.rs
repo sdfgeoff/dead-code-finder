@@ -50,41 +50,6 @@ impl SymbolCollector<'_> {
             .or_else(|| type_binding_from_expr(self.module, self.imports, value))
     }
 
-    pub(super) fn known_call_result_binding(&self, expr: &ast::Expr) -> Option<TypeBinding> {
-        let ast::Expr::Call(call) = expr else {
-            return None;
-        };
-        let callable = callable_identity(self.module, self.imports, &call.func)?;
-        let base = match callable.as_str() {
-            "datetime.datetime.now"
-            | "datetime.datetime.utcnow"
-            | "datetime.datetime.fromtimestamp"
-            | "datetime.datetime.strptime"
-            | "datetime.datetime.combine" => "datetime.datetime",
-            "datetime.date.today"
-            | "datetime.date.fromtimestamp"
-            | "datetime.date.fromisoformat" => "datetime.date",
-            "pathlib.Path" => "pathlib.Path",
-            "inspect.stack" => {
-                return Some(TypeBinding {
-                    base: "list".to_string(),
-                    args: vec![TypeBinding {
-                        base: "inspect.FrameInfo".to_string(),
-                        args: Vec::new(),
-                        external: true,
-                    }],
-                    external: false,
-                });
-            }
-            _ => return None,
-        };
-        Some(TypeBinding {
-            base: base.to_string(),
-            args: Vec::new(),
-            external: true,
-        })
-    }
-
     pub(super) fn local_call_return_binding(
         &self,
         expr: &ast::Expr,
@@ -97,6 +62,9 @@ impl SymbolCollector<'_> {
             return None;
         };
         if let Some(return_type) = self.executor_callable_return_binding(call, types) {
+            return Some(return_type);
+        }
+        if let Some(return_type) = self.callable_value_return_binding(call, types) {
             return Some(return_type);
         }
         let callee = self.resolved_call_target(&call.func, types)?;

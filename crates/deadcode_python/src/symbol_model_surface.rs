@@ -7,6 +7,7 @@ use super::symbol_aliases::expand_alias_binding;
 use super::symbol_members::push_member_reference;
 use super::symbol_rules::callable_identity;
 use super::symbol_types::type_binding_from_expr;
+use super::symbol_typevars::substitute_type_vars;
 use super::SymbolCollector;
 use crate::symbol_index::{AccessKind, ClassInfo, FieldAnnotation, TypeBinding};
 
@@ -49,6 +50,44 @@ impl SymbolCollector<'_> {
                 );
             }
         }
+        self.collect_callable_factory_model_surfaces(owner, call, types);
+    }
+
+    fn collect_callable_factory_model_surfaces(
+        &mut self,
+        owner: &str,
+        call: &ast::ExprCall,
+        types: &HashMap<String, TypeBinding>,
+    ) {
+        let Some(callee) = self.resolved_call_target(&call.func, types) else {
+            return;
+        };
+        let Some(signature) = self
+            .available_fn_sigs
+            .iter()
+            .find(|signature| signature.function == callee)
+        else {
+            return;
+        };
+        let Some(return_type) = signature
+            .concrete_return_type
+            .as_ref()
+            .or(signature.return_type.as_ref())
+        else {
+            return;
+        };
+        if !is_callable_type(&return_type.base) || return_type.args.is_empty() {
+            return;
+        }
+        let substitutions = self.type_var_substitutions(signature, call, types);
+        let callable = substitute_type_vars(return_type, &substitutions);
+        let Some((output, inputs)) = callable.args.split_last() else {
+            return;
+        };
+        for input in inputs {
+            self.collect_model_surface_binding(owner, input, AccessKind::Read, call.range());
+        }
+        self.collect_model_surface_binding(owner, output, AccessKind::Construct, call.range());
     }
 
     fn collect_factory_model_surface(
@@ -169,4 +208,11 @@ fn is_transparent_container(type_name: &str) -> bool {
             | "typing.List"
             | "List"
     )
+}
+
+fn is_callable_type(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "typing.Callable" | "collections.abc.Callable" | "Callable"
+    ) || type_name.ends_with(".Callable")
 }

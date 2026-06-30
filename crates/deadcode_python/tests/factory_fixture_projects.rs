@@ -46,6 +46,25 @@ fn factory_model_surface_fields_marked_live() {
     assert!(symbols.contains(&"pkg.db.DeadRow.value".to_string()));
 }
 
+#[test]
+fn generic_callable_factory_surfaces_without_rules() {
+    let report = analyze_fixture("generic_callable_factory_surfaces_without_rules");
+    let symbols = report
+        .findings
+        .iter()
+        .map(|finding| finding.symbol.clone())
+        .collect::<Vec<_>>();
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.db.InputRow.required".to_string()));
+    assert!(!symbols.contains(&"pkg.db.InputRow.serialized_only".to_string()));
+    assert!(!symbols.contains(&"pkg.db.OutputRow.id".to_string()));
+    assert!(!symbols.contains(&"pkg.db.OutputRow.constructed_only".to_string()));
+    assert!(!symbols.contains(&"pkg.db.BatchInput.item_id".to_string()));
+    assert!(!symbols.contains(&"pkg.db.BatchInput.payload".to_string()));
+    assert!(symbols.contains(&"pkg.db.DeadRow.value".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     analyze_project(&AnalyzeOptions {
         config_path: fixture_path(name).join("dead-code-finder.json"),

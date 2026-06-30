@@ -20,6 +20,8 @@ mod symbol_call_references;
 mod symbol_callable_alias;
 #[path = "symbol_callable_return_locals.rs"]
 mod symbol_callable_return_locals;
+#[path = "symbol_callable_values.rs"]
+mod symbol_callable_values;
 #[path = "symbol_class_definition.rs"]
 mod symbol_class_definition;
 #[path = "symbol_comprehension_narrowing.rs"]
@@ -56,6 +58,8 @@ mod symbol_interpolation;
 mod symbol_iteration;
 #[path = "symbol_json_types.rs"]
 mod symbol_json_types;
+#[path = "symbol_known_calls.rs"]
+mod symbol_known_calls;
 #[path = "symbol_lambda.rs"]
 mod symbol_lambda;
 #[path = "symbol_local_functions.rs"]
