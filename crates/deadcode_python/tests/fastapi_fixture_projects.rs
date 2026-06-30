@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use deadcode_python::{analyze_project, AnalyzeOptions};
 
 #[test]
-#[ignore = "documents current FastAPI router reachability bug: registering a route on an unused router should not make the endpoint live"]
 fn unused_router_does_not_make_registered_endpoints_live() {
     let report = analyze_fixture("fastapi_unused_router_does_not_make_registered_endpoints_live");
     let symbols = finding_symbols(&report);

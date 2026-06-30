@@ -43,7 +43,7 @@ pub struct SymbolIndex {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedRouteGlob {
     pub when_function_called: String,
-    pub modules: Vec<String>,
+    pub symbols: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

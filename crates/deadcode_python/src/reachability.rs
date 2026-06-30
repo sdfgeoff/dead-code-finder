@@ -374,8 +374,8 @@ fn compute_live_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String
                     push_live(&target, &mut live, &mut queue);
                     for route_glob in &index.route_globs {
                         if route_glob.when_function_called == target {
-                            for module in &route_glob.modules {
-                                push_live(module, &mut live, &mut queue);
+                            for symbol in &route_glob.symbols {
+                                push_live(symbol, &mut live, &mut queue);
                             }
                         }
                     }

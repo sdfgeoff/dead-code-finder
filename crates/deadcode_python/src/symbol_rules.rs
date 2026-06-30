@@ -23,6 +23,46 @@ pub(super) fn decorator_registers_function(
     })
 }
 
+pub(super) fn decorator_registration_receiver_owner(
+    module: &str,
+    imports: &[ResolvedImport],
+    rules: &RuleConfig,
+    expr: &ast::Expr,
+    types: &HashMap<String, TypeBinding>,
+) -> Option<String> {
+    if !rules
+        .calls
+        .iter()
+        .any(|rule| rule.effect == "connectRouter")
+        && rules.route_globs.is_empty()
+    {
+        return None;
+    }
+    let callee = match expr {
+        ast::Expr::Call(call) => call.func.as_ref(),
+        expr => expr,
+    };
+    let ast::Expr::Attribute(attribute) = callee else {
+        return None;
+    };
+    let ast::Expr::Name(receiver) = attribute.value.as_ref() else {
+        return None;
+    };
+    if !rules.decorators.iter().any(|rule| {
+        matches!(
+            rule.effect.as_str(),
+            "registerDecoratedFunction" | "registerBoundaryFunction"
+        ) && rule.receiver_type.is_some()
+            && decorator_matches(rule, expr, module, imports, types)
+    }) {
+        return None;
+    }
+    Some(
+        resolve_name_identity(module, imports, receiver.id.as_str())
+            .unwrap_or_else(|| format!("{module}.{}", receiver.id.as_str())),
+    )
+}
+
 pub(super) fn decorator_marks_boundary_function(
     module: &str,
     imports: &[ResolvedImport],

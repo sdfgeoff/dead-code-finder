@@ -111,6 +111,7 @@ use self::symbol_metadata::class_info;
 use self::symbol_rules::{
     decorator_callable_wrapper_type, decorator_marks_boundary_function,
     decorator_parameter_surface, decorator_registers_function,
+    decorator_registration_receiver_owner,
 };
 use super::{
     AccessKind, CallArgumentType, CallableReturnMemberUse, CallableReturnOverride, ClassInfo,
@@ -348,6 +349,13 @@ impl SymbolCollector<'_> {
             })
             .unwrap_or_else(|| format!("{}.{}", self.module, function.name.as_str()));
         for decorator in &function.decorator_list {
+            let registration_receiver_owner = decorator_registration_receiver_owner(
+                self.module,
+                self.imports,
+                self.rules,
+                &decorator.expression,
+                types,
+            );
             if let Some(fixture) =
                 pytest_fixture_from_decorator(&function_owner, function, &decorator.expression)
             {
@@ -366,7 +374,7 @@ impl SymbolCollector<'_> {
                         .map(|class_name| format!("{class_name}.{}", function.name.as_str()))
                 });
                 self.push_reference(
-                    owner,
+                    registration_receiver_owner.as_deref().unwrap_or(owner),
                     name.as_deref().unwrap_or(function.name.as_str()),
                     decorator.range,
                 );
@@ -415,7 +423,9 @@ impl SymbolCollector<'_> {
                     decorator.range,
                 );
             }
-            self.collect_expr_references(owner, &decorator.expression, types);
+            if registration_receiver_owner.is_none() {
+                self.collect_expr_references(owner, &decorator.expression, types);
+            }
             self.collect_expr_references(&function_owner, &decorator.expression, types);
         }
     }

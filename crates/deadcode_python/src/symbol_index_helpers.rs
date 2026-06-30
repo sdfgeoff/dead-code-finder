@@ -26,14 +26,19 @@ pub(super) fn resolve_route_globs(
         .route_globs
         .iter()
         .map(|rule| {
-            let modules = modules
+            let symbols = modules
                 .iter()
                 .filter(|module| route_glob_matches(&config.project_dir, &rule.glob, &module.file))
-                .map(|module| module.module.clone())
+                .flat_map(|module| {
+                    [
+                        module.module.clone(),
+                        format!("{}.{}", module.module, rule.export),
+                    ]
+                })
                 .collect();
             ResolvedRouteGlob {
                 when_function_called: rule.when_function_called.clone(),
-                modules,
+                symbols,
             }
         })
         .collect()
