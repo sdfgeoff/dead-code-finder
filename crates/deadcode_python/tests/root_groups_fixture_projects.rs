@@ -70,6 +70,7 @@ fn allow_comment_roots_class_scope() {
     assert!(!contains_symbol(&report, "pkg.main.Client.endpoint"));
     assert!(!contains_symbol(&report, "pkg.main.Client.other_endpoint"));
     assert!(!contains_symbol(&report, "pkg.main.helper"));
+    assert!(!contains_symbol(&report, "pkg.main.UploadFile"));
     assert!(contains_symbol(&report, "pkg.main.DeadClient"));
     assert!(contains_symbol(&report, "pkg.main.DeadClient.value"));
     assert!(contains_symbol(&report, "pkg.main.DeadClient.endpoint"));
