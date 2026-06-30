@@ -1,0 +1,13 @@
+{
+  "roots": [{ "path": "pkg", "module": "pkg" }],
+  "entrypoints": ["pkg/main.py"],
+  "rules": {
+    "decorators": [
+      {
+        "function": "functools.lru_cache",
+        "effect": "useFunctionParameters",
+        "includeParameterTypeSurface": true
+      }
+    ]
+  }
+}

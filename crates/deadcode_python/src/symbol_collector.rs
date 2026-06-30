@@ -32,6 +32,8 @@ mod symbol_construction;
 mod symbol_context;
 #[path = "symbol_datetime.rs"]
 mod symbol_datetime;
+#[path = "symbol_decorator_parameters.rs"]
+mod symbol_decorator_parameters;
 #[path = "symbol_expansion.rs"]
 mod symbol_expansion;
 #[path = "symbol_expr.rs"]
@@ -104,7 +106,7 @@ use self::symbol_members::push_member_reference;
 use self::symbol_metadata::class_info;
 use self::symbol_rules::{
     decorator_callable_wrapper_type, decorator_marks_boundary_function,
-    decorator_registers_function,
+    decorator_parameter_surface, decorator_registers_function,
 };
 use super::{
     AccessKind, CallArgumentType, CallableReturnMemberUse, CallableReturnOverride, ClassInfo,
@@ -392,6 +394,20 @@ impl SymbolCollector<'_> {
                     &function_owner,
                     format!("{callable_type}.__call__"),
                     AccessKind::Call,
+                    decorator.range,
+                );
+            }
+            if let Some(include_type_surface) = decorator_parameter_surface(
+                self.module,
+                self.imports,
+                self.rules,
+                &decorator.expression,
+                types,
+            ) {
+                self.collect_decorator_parameter_references(
+                    &function_owner,
+                    function,
+                    include_type_surface,
                     decorator.range,
                 );
             }

@@ -57,6 +57,16 @@ fn imported_typevar_generic_validation_surface() {
     assert!(symbols.contains(&"pkg.main.DeadPayload.dead".to_string()));
 }
 
+#[test]
+fn imported_generic_protocol_field_read() {
+    let report = analyze_fixture("imported_generic_protocol_field_read");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.protocols.LoaderProtocol.cache_key".to_string()));
+    assert!(symbols.contains(&"pkg.protocols.DeadProtocol.cache_key".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     analyze_project(&AnalyzeOptions {
         config_path: fixture_path(name).join("dead-code-finder.json"),

@@ -53,6 +53,17 @@ fn decorator_factory_nested_return_flow_marks_wrappers_live() {
     assert!(symbols.contains(&"pkg.main.new_endpoint".to_string()));
 }
 
+#[test]
+fn decorator_use_function_parameters_marks_type_surface() {
+    let report = analyze_fixture("decorator_use_function_parameters_surface");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.LoaderProtocol.cache_key".to_string()));
+    assert!(!symbols.contains(&"pkg.main.LoaderProtocol.load".to_string()));
+    assert!(symbols.contains(&"pkg.main.DeadProtocol.cache_key".to_string()));
+}
+
 fn analyze_fixture(name: &str) -> deadcode_core::AnalysisReport {
     let root = fixture_root(name);
     analyze_project(&AnalyzeOptions::new(root.join("dead-code-finder.json")))

@@ -124,6 +124,8 @@ pub struct DecoratorRule {
     pub methods: Vec<String>,
     #[serde(default)]
     pub callable_type: Option<String>,
+    #[serde(default)]
+    pub include_parameter_type_surface: bool,
     pub effect: String,
 }
 
@@ -425,7 +427,10 @@ fn validate_rules(rules: &RuleConfig) -> Result<(), ConfigError> {
         }
         if !matches!(
             decorator.effect.as_str(),
-            "registerDecoratedFunction" | "registerBoundaryFunction" | "wrapWithCallableType"
+            "registerDecoratedFunction"
+                | "registerBoundaryFunction"
+                | "wrapWithCallableType"
+                | "useFunctionParameters"
         ) {
             return Err(ConfigError::InvalidRule {
                 message: format!("unsupported decorator effect {}", decorator.effect),
