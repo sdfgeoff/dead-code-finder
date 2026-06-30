@@ -1,3 +1,7 @@
+#[path = "source_locator.rs"]
+mod source_locator;
+#[path = "symbol_allow_comments.rs"]
+mod symbol_allow_comments;
 #[path = "symbol_collector.rs"]
 mod symbol_collector;
 
@@ -6,12 +10,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use deadcode_core::{Diagnostic, Severity, SourceSpan, SymbolKind};
-use ruff_text_size::TextRange;
 
 use crate::config::{LoadedProjectConfig, ResolvedRoot, RuleConfig};
 use crate::symbol_files::collect_python_files;
 use crate::symbol_roots::{is_test_file, root_groups_for_file, root_symbols_for_module};
 
+pub(crate) use self::source_locator::SourceLocator;
+use self::symbol_allow_comments::{allow_comment_roots, EXPLICITLY_ALLOWED_GROUP};
 use self::symbol_collector::SymbolCollector;
 
 pub(crate) type ReexportMap = HashMap<(String, String), ImportTarget>;
@@ -322,12 +327,28 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
         .iter()
         .map(|group| group.name.clone())
         .collect();
+    if !index
+        .root_groups
+        .iter()
+        .any(|group| group == EXPLICITLY_ALLOWED_GROUP)
+    {
+        index.root_groups.push(EXPLICITLY_ALLOWED_GROUP.to_string());
+    }
     index.counts_as_used_root_groups = config
         .root_groups
         .iter()
         .filter(|group| group.counts_as_used)
         .map(|group| group.name.clone())
         .collect();
+    if !index
+        .counts_as_used_root_groups
+        .iter()
+        .any(|group| group == EXPLICITLY_ALLOWED_GROUP)
+    {
+        index
+            .counts_as_used_root_groups
+            .push(EXPLICITLY_ALLOWED_GROUP.to_string());
+    }
     index.class_surfaces = config
         .rules
         .class_surfaces
@@ -615,7 +636,7 @@ fn index_module(
         }
     }
 
-    let root_symbols = root_symbols_for_module(
+    let mut root_symbols = root_symbols_for_module(
         module,
         &symbols,
         &pytest_fixtures,
@@ -624,6 +645,7 @@ fn index_module(
         is_test,
         has_main_entrypoint,
     );
+    root_symbols.extend(allow_comment_roots(&source, &symbols));
 
     Ok(IndexedModuleResult {
         module: ModuleIndex {
@@ -667,36 +689,6 @@ fn module_name_for_file(root: &ResolvedRoot, file: &Path) -> String {
 
 fn strip_py_extension(part: &str) -> String {
     part.strip_suffix(".py").unwrap_or(part).to_string()
-}
-
-struct SourceLocator {
-    line_starts: Vec<usize>,
-}
-
-impl SourceLocator {
-    fn new(source: &str) -> Self {
-        let mut line_starts = vec![0];
-        for (index, byte) in source.bytes().enumerate() {
-            if byte == b'\n' {
-                line_starts.push(index + 1);
-            }
-        }
-        Self { line_starts }
-    }
-
-    fn span(&self, file: &Path, range: TextRange) -> SourceSpan {
-        self.span_from_range_string(&file.display().to_string(), range)
-    }
-
-    fn span_from_range_string(&self, file: &str, range: TextRange) -> SourceSpan {
-        let offset = range.start().to_usize();
-        let line_index = self.line_starts.partition_point(|start| *start <= offset) - 1;
-        SourceSpan::new(
-            file,
-            line_index + 1,
-            offset - self.line_starts[line_index] + 1,
-        )
-    }
 }
 
 #[cfg(test)]
