@@ -4,6 +4,7 @@ use ruff_python_ast as ast;
 use ruff_text_size::Ranged;
 
 use super::symbol_construction::constructed_type_for_call;
+use super::symbol_expr::string_literal;
 use super::symbol_generics::member_reference_target_bases;
 use super::symbol_members::push_member_reference;
 use super::symbol_rules::{
@@ -43,6 +44,7 @@ impl SymbolCollector<'_> {
         });
         self.collect_manual_callable_wrapper_call(owner, call, types);
         self.collect_callable_return_override(owner, call, callee.as_deref(), types);
+        self.collect_string_format_references(owner, call, types);
         for (name, range) in callable_argument_references(
             self.module,
             self.imports,
@@ -211,6 +213,51 @@ impl SymbolCollector<'_> {
         }
     }
 
+    fn collect_string_format_references(
+        &mut self,
+        owner: &str,
+        call: &ast::ExprCall,
+        types: &HashMap<String, TypeBinding>,
+    ) {
+        let ast::Expr::Attribute(attribute) = call.func.as_ref() else {
+            return;
+        };
+        if attribute.attr.as_str() != "format" {
+            return;
+        }
+        let Some(template) = string_literal(&attribute.value) else {
+            return;
+        };
+        let replacement_fields = string_format_replacement_fields(template);
+        if replacement_fields.is_empty() {
+            return;
+        }
+        for keyword in &call.arguments.keywords {
+            let Some(arg) = &keyword.arg else {
+                continue;
+            };
+            let Some(binding) = self.expression_flow_binding(&keyword.value, types) else {
+                continue;
+            };
+            for field in replacement_fields
+                .iter()
+                .filter(|field| field.argument == arg.as_str())
+            {
+                for target_base in member_reference_target_bases(&binding) {
+                    push_member_reference(
+                        self.member_refs,
+                        self.locator,
+                        self.file,
+                        owner,
+                        format!("{target_base}.{}", field.member),
+                        AccessKind::Read,
+                        keyword.value.range(),
+                    );
+                }
+            }
+        }
+    }
+
     fn collect_callable_return_override(
         &mut self,
         owner: &str,
@@ -368,4 +415,60 @@ impl SymbolCollector<'_> {
             .and_then(|signature| signature.parameters.first())
             .is_some_and(|parameter| matches!(parameter.name.as_str(), "self" | "cls"))
     }
+}
+
+struct ReplacementField {
+    argument: String,
+    member: String,
+}
+
+fn string_format_replacement_fields(template: &str) -> Vec<ReplacementField> {
+    let mut fields = Vec::new();
+    let mut chars = template.char_indices().peekable();
+    while let Some((_, ch)) = chars.next() {
+        if ch != '{' {
+            continue;
+        }
+        if matches!(chars.peek(), Some((_, '{'))) {
+            chars.next();
+            continue;
+        }
+        let mut content = String::new();
+        for (_, field_ch) in chars.by_ref() {
+            if field_ch == '}' {
+                break;
+            }
+            content.push(field_ch);
+        }
+        if let Some(field) = replacement_field(&content) {
+            fields.push(field);
+        }
+    }
+    fields
+}
+
+fn replacement_field(content: &str) -> Option<ReplacementField> {
+    let field_name = content.split(['!', ':']).next().unwrap_or_default().trim();
+    let (argument, remainder) = field_name.split_once('.')?;
+    let member = remainder
+        .split(['.', '['])
+        .next()
+        .unwrap_or_default()
+        .trim();
+    if !is_identifier(argument) || !is_identifier(member) {
+        return None;
+    }
+    Some(ReplacementField {
+        argument: argument.to_string(),
+        member: member.to_string(),
+    })
+}
+
+fn is_identifier(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first == '_' || first.is_ascii_alphabetic())
+        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }

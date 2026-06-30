@@ -41,6 +41,19 @@ fn local_annotation_alias_expands_for_field_chain() {
 }
 
 #[test]
+fn string_format_marks_model_fields_live() {
+    let report = analyze_fixture("string_format_marks_model_fields_live");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.Notification.task_uuid".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Notification.resource_id".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Notification.old_status".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Notification.new_status".to_string()));
+    assert!(symbols.contains(&"pkg.main.Notification.unused_field".to_string()));
+}
+
+#[test]
 fn date_fromisoformat_result_has_year() {
     let report = analyze_fixture("date_fromisoformat_result_has_year");
 

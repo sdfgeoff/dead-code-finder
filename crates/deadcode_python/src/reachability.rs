@@ -2,10 +2,11 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use deadcode_core::{Diagnostic, Finding, Severity, SymbolKind};
 
-use crate::symbol_index::{AccessKind, ClassInfo, SymbolIndex};
+use crate::symbol_index::{AccessKind, SymbolIndex};
 
 use self::reachability_class_metadata::{
-    mark_configured_live_class_surfaces, mark_live_class_creation_metadata, mark_symbol_owners_live,
+    abc_override_methods_for_live_classes, mark_configured_live_class_surfaces,
+    mark_live_class_creation_metadata, mark_symbol_owners_live,
 };
 use self::reachability_concrete_flow::{concrete_flow_base, concrete_flow_candidates};
 use self::reachability_concrete_return::propagate_concrete_return_flows;
@@ -24,10 +25,17 @@ mod reachability_class_metadata;
 mod reachability_concrete_flow;
 #[path = "reachability_concrete_return.rs"]
 mod reachability_concrete_return;
+#[path = "reachability_lookup.rs"]
+mod reachability_lookup;
 #[path = "reachability_maps.rs"]
 mod reachability_maps;
 #[path = "reachability_protocol.rs"]
 mod reachability_protocol;
+
+pub(super) use reachability_lookup::{class_derives_from, is_subclass_or_same, lookup_member};
+use reachability_lookup::{
+    push_live, requeue_live_init_dependent_methods, resolve_member_targets, root_symbols,
+};
 
 pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
     let live_by_group = compute_live_symbols_by_group(index);
@@ -206,56 +214,105 @@ fn compute_live_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String
     let mut live = root_symbols(index, root_group);
     let mut queue = live.iter().cloned().collect::<VecDeque<_>>();
 
-    while let Some(owner) = queue.pop_front() {
-        if let Some(module) = module_map.get(owner.as_str()) {
-            for import in &module.imports {
-                if let Some(target) = imported_module_target(&import.target) {
-                    push_live(target, &mut live, &mut queue);
+    loop {
+        while let Some(owner) = queue.pop_front() {
+            if let Some(module) = module_map.get(owner.as_str()) {
+                for import in &module.imports {
+                    if let Some(target) = imported_module_target(&import.target) {
+                        push_live(target, &mut live, &mut queue);
+                    }
                 }
             }
-        }
 
-        let Some(module_name) = owner_module(&owner, &symbol_modules, &module_map) else {
-            continue;
-        };
-        let Some(module) = module_map.get(module_name.as_str()) else {
-            continue;
-        };
+            let Some(module_name) = owner_module(&owner, &symbol_modules, &module_map) else {
+                continue;
+            };
+            let Some(module) = module_map.get(module_name.as_str()) else {
+                continue;
+            };
 
-        if class_derives_from(&owner, "pydantic.BaseModel", &class_map) {
-            let model_config = format!("{owner}.model_config");
-            if symbol_kinds.contains_key(&model_config) {
-                push_live(&model_config, &mut live, &mut queue);
-            }
-        }
-
-        if let Some(signature) = signature_map.get(owner.as_str()) {
-            for parameter in &signature.parameters {
-                if matches!(parameter.name.as_str(), "self" | "cls") {
-                    continue;
-                }
-                if let Some(fixture) = fixture_map.get(parameter.name.as_str()) {
-                    push_live(&fixture.function, &mut live, &mut queue);
+            if class_derives_from(&owner, "pydantic.BaseModel", &class_map) {
+                let model_config = format!("{owner}.model_config");
+                if symbol_kinds.contains_key(&model_config) {
+                    push_live(&model_config, &mut live, &mut queue);
                 }
             }
-        }
 
-        for dependency_override in dependency_overrides
-            .iter()
-            .filter(|dependency_override| dependency_override.from == owner)
-        {
-            for dependency in function_dependencies
+            if let Some(signature) = signature_map.get(owner.as_str()) {
+                for parameter in &signature.parameters {
+                    if matches!(parameter.name.as_str(), "self" | "cls") {
+                        continue;
+                    }
+                    if let Some(fixture) = fixture_map.get(parameter.name.as_str()) {
+                        push_live(&fixture.function, &mut live, &mut queue);
+                    }
+                }
+            }
+
+            for dependency_override in dependency_overrides
                 .iter()
-                .filter(|dependency| dependency.dependency == dependency_override.dependency)
+                .filter(|dependency_override| dependency_override.from == owner)
             {
-                let Some((base_type, requires_subclass_check)) =
-                    concrete_flow_base(&dependency.parameter_type)
+                for dependency in function_dependencies
+                    .iter()
+                    .filter(|dependency| dependency.dependency == dependency_override.dependency)
+                {
+                    let Some((base_type, requires_subclass_check)) =
+                        concrete_flow_base(&dependency.parameter_type)
+                    else {
+                        continue;
+                    };
+                    if requires_subclass_check
+                        && !is_subclass_or_same(
+                            &dependency_override.concrete_type,
+                            base_type,
+                            &class_map,
+                            &symbol_kinds,
+                        )
+                    {
+                        continue;
+                    }
+                    let concrete_types = concrete_flows
+                        .entry((dependency.function.clone(), base_type.clone()))
+                        .or_default();
+                    if concrete_types.insert(dependency_override.concrete_type.clone()) {
+                        queue.push_back(dependency.function.clone());
+                    }
+                }
+            }
+
+            for target in reachability_callable_return::process_callable_return_flows(
+                &owner,
+                &live,
+                &mut queue,
+                &mut callable_return_flows,
+                &callable_return_overrides,
+                &callable_return_member_uses,
+                &function_return_calls,
+                &symbol_kinds,
+                &class_map,
+            ) {
+                push_live(&target, &mut live, &mut queue);
+            }
+
+            for call_argument in module
+                .call_argument_types
+                .iter()
+                .filter(|call_argument| call_argument.from == owner)
+            {
+                let Some(signature) = signature_map.get(call_argument.callee.as_str()) else {
+                    continue;
+                };
+                let Some(Some((base_type, requires_subclass_check))) = signature
+                    .parameters
+                    .get(call_argument.position)
+                    .map(|parameter| parameter.annotation.as_ref().and_then(concrete_flow_base))
                 else {
                     continue;
                 };
                 if requires_subclass_check
                     && !is_subclass_or_same(
-                        &dependency_override.concrete_type,
+                        &call_argument.concrete_type,
                         base_type,
                         &class_map,
                         &symbol_kinds,
@@ -263,133 +320,100 @@ fn compute_live_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String
                 {
                     continue;
                 }
-                let concrete_types = concrete_flows
-                    .entry((dependency.function.clone(), base_type.clone()))
-                    .or_default();
-                if concrete_types.insert(dependency_override.concrete_type.clone()) {
-                    queue.push_back(dependency.function.clone());
+                let flow_key = (call_argument.callee.clone(), base_type.clone());
+                let forwarded =
+                    concrete_flow_candidates(&owner, &call_argument.concrete_type, &concrete_flows)
+                        .into_iter()
+                        .flat_map(|types| types.iter().cloned())
+                        .collect::<Vec<_>>();
+                let concrete_candidates = if forwarded.is_empty() {
+                    vec![call_argument.concrete_type.clone()]
+                } else {
+                    forwarded
+                };
+                for concrete_type in concrete_candidates {
+                    if requires_subclass_check
+                        && !is_subclass_or_same(
+                            &concrete_type,
+                            base_type,
+                            &class_map,
+                            &symbol_kinds,
+                        )
+                    {
+                        continue;
+                    }
+                    let concrete_types = concrete_flows.entry(flow_key.clone()).or_default();
+                    if concrete_types.insert(concrete_type) && live.contains(&call_argument.callee)
+                    {
+                        queue.push_back(call_argument.callee.clone());
+                        requeue_live_init_dependent_methods(
+                            &call_argument.callee,
+                            &symbol_kinds,
+                            &live,
+                            &mut queue,
+                        );
+                    }
                 }
             }
-        }
 
-        for target in reachability_callable_return::process_callable_return_flows(
-            &owner,
-            &live,
-            &mut queue,
-            &mut callable_return_flows,
-            &callable_return_overrides,
-            &callable_return_member_uses,
-            &function_return_calls,
-            &symbol_kinds,
-            &class_map,
-        ) {
-            push_live(&target, &mut live, &mut queue);
-        }
-
-        for call_argument in module
-            .call_argument_types
-            .iter()
-            .filter(|call_argument| call_argument.from == owner)
-        {
-            let Some(signature) = signature_map.get(call_argument.callee.as_str()) else {
-                continue;
-            };
-            let Some(Some((base_type, requires_subclass_check))) = signature
-                .parameters
-                .get(call_argument.position)
-                .map(|parameter| parameter.annotation.as_ref().and_then(concrete_flow_base))
-            else {
-                continue;
-            };
-            if requires_subclass_check
-                && !is_subclass_or_same(
-                    &call_argument.concrete_type,
-                    base_type,
-                    &class_map,
-                    &symbol_kinds,
-                )
+            for reference in module
+                .references
+                .iter()
+                .filter(|reference| reference.from == owner)
             {
-                continue;
-            }
-            let flow_key = (call_argument.callee.clone(), base_type.clone());
-            let forwarded =
-                concrete_flow_candidates(&owner, &call_argument.concrete_type, &concrete_flows)
-                    .into_iter()
-                    .flat_map(|types| types.iter().cloned())
-                    .collect::<Vec<_>>();
-            let concrete_candidates = if forwarded.is_empty() {
-                vec![call_argument.concrete_type.clone()]
-            } else {
-                forwarded
-            };
-            for concrete_type in concrete_candidates {
-                if requires_subclass_check
-                    && !is_subclass_or_same(&concrete_type, base_type, &class_map, &symbol_kinds)
-                {
-                    continue;
-                }
-                let concrete_types = concrete_flows.entry(flow_key.clone()).or_default();
-                if concrete_types.insert(concrete_type) && live.contains(&call_argument.callee) {
-                    queue.push_back(call_argument.callee.clone());
-                    requeue_live_init_dependent_methods(
-                        &call_argument.callee,
-                        &symbol_kinds,
-                        &live,
-                        &mut queue,
-                    );
-                }
-            }
-        }
-
-        for reference in module
-            .references
-            .iter()
-            .filter(|reference| reference.from == owner)
-        {
-            if let Some(target) = resolve_reference(
-                &owner,
-                module,
-                &reference.name,
-                &symbol_kinds,
-                &module_values,
-            ) {
-                push_live(&target, &mut live, &mut queue);
-                for route_glob in &index.route_globs {
-                    if route_glob.when_function_called == target {
-                        for module in &route_glob.modules {
-                            push_live(module, &mut live, &mut queue);
+                if let Some(target) = resolve_reference(
+                    &owner,
+                    module,
+                    &reference.name,
+                    &symbol_kinds,
+                    &module_values,
+                ) {
+                    push_live(&target, &mut live, &mut queue);
+                    for route_glob in &index.route_globs {
+                        if route_glob.when_function_called == target {
+                            for module in &route_glob.modules {
+                                push_live(module, &mut live, &mut queue);
+                            }
                         }
                     }
                 }
             }
-        }
 
-        for reference in module
-            .member_references
-            .iter()
-            .filter(|reference| reference.from == owner)
-        {
-            if reference.access == AccessKind::Call
-                && propagate_concrete_return_flows(
+            for reference in module
+                .member_references
+                .iter()
+                .filter(|reference| reference.from == owner)
+            {
+                if reference.access == AccessKind::Call
+                    && propagate_concrete_return_flows(
+                        &owner,
+                        &reference.target,
+                        &signature_map,
+                        &symbol_kinds,
+                        &class_map,
+                        &mut concrete_flows,
+                    )
+                {
+                    queue.push_back(owner.clone());
+                }
+                for target in resolve_member_targets(
                     &owner,
                     &reference.target,
-                    &signature_map,
                     &symbol_kinds,
                     &class_map,
-                    &mut concrete_flows,
-                )
-            {
-                queue.push_back(owner.clone());
+                    &concrete_flows,
+                ) {
+                    push_live(&target, &mut live, &mut queue);
+                }
             }
-            for target in resolve_member_targets(
-                &owner,
-                &reference.target,
-                &symbol_kinds,
-                &class_map,
-                &concrete_flows,
-            ) {
-                push_live(&target, &mut live, &mut queue);
-            }
+        }
+
+        mark_symbol_owners_live(&mut live, &symbol_kinds);
+        for target in abc_override_methods_for_live_classes(&live, &symbol_kinds, &class_map) {
+            push_live(&target, &mut live, &mut queue);
+        }
+        if queue.is_empty() {
+            break;
         }
     }
 
@@ -402,172 +426,6 @@ fn compute_live_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String
         &index.class_surfaces,
     );
     live
-}
-
-fn root_symbols(index: &SymbolIndex, root_group: &str) -> HashSet<String> {
-    index
-        .modules
-        .iter()
-        .flat_map(|module| &module.root_symbols)
-        .filter(|root| root.group == root_group)
-        .map(|root| root.symbol.clone())
-        .collect()
-}
-
-fn push_live(target: &str, live: &mut HashSet<String>, queue: &mut VecDeque<String>) {
-    if live.insert(target.to_string()) {
-        queue.push_back(target.to_string());
-    }
-}
-
-fn requeue_live_init_dependent_methods(
-    callee: &str,
-    symbol_kinds: &HashMap<String, SymbolKind>,
-    live: &HashSet<String>,
-    queue: &mut VecDeque<String>,
-) {
-    let Some(class_name) = callee.strip_suffix(".__init__") else {
-        return;
-    };
-    let method_prefix = format!("{class_name}.");
-    for (symbol, kind) in symbol_kinds {
-        if *kind == SymbolKind::Method
-            && symbol.starts_with(&method_prefix)
-            && live.contains(symbol)
-        {
-            queue.push_back(symbol.clone());
-        }
-    }
-}
-
-fn resolve_member_targets(
-    owner: &str,
-    target: &str,
-    symbol_kinds: &HashMap<String, SymbolKind>,
-    class_map: &HashMap<String, ClassInfo>,
-    concrete_flows: &HashMap<(String, String), HashSet<String>>,
-) -> Vec<String> {
-    let Some((receiver_type, member)) = target.rsplit_once('.') else {
-        return Vec::new();
-    };
-    let mut targets = Vec::new();
-    if let Some(resolved) = lookup_member(receiver_type, member, symbol_kinds, class_map) {
-        targets.push(resolved);
-    }
-    for concrete_types in concrete_flow_candidates(owner, receiver_type, concrete_flows) {
-        for concrete_type in concrete_types {
-            if let Some(resolved) = lookup_member(concrete_type, member, symbol_kinds, class_map) {
-                if !targets.contains(&resolved) {
-                    targets.push(resolved);
-                }
-            }
-        }
-    }
-    targets
-}
-
-pub(super) fn lookup_member(
-    class_name: &str,
-    member: &str,
-    symbol_kinds: &HashMap<String, SymbolKind>,
-    class_map: &HashMap<String, ClassInfo>,
-) -> Option<String> {
-    lookup_member_inner(
-        class_name,
-        member,
-        symbol_kinds,
-        class_map,
-        &mut HashSet::new(),
-    )
-}
-
-fn lookup_member_inner(
-    class_name: &str,
-    member: &str,
-    symbol_kinds: &HashMap<String, SymbolKind>,
-    class_map: &HashMap<String, ClassInfo>,
-    visited: &mut HashSet<String>,
-) -> Option<String> {
-    if !visited.insert(class_name.to_string()) {
-        return None;
-    }
-    let direct = format!("{class_name}.{member}");
-    if symbol_kinds.contains_key(&direct) {
-        return Some(direct);
-    }
-    let class_info = class_map.get(class_name)?;
-    for base in &class_info.bases {
-        if let Some(target) =
-            lookup_member_inner(&base.base, member, symbol_kinds, class_map, visited)
-        {
-            return Some(target);
-        }
-    }
-    None
-}
-
-pub(super) fn is_subclass_or_same(
-    concrete_type: &str,
-    base_type: &str,
-    class_map: &HashMap<String, ClassInfo>,
-    symbol_kinds: &HashMap<String, SymbolKind>,
-) -> bool {
-    if concrete_type == base_type {
-        return true;
-    }
-    is_subclass_inner(concrete_type, base_type, class_map, &mut HashSet::new())
-        || reachability_protocol::structurally_implements_protocol(
-            concrete_type,
-            base_type,
-            class_map,
-            symbol_kinds,
-        )
-}
-
-fn class_derives_from(
-    concrete_type: &str,
-    base_type: &str,
-    class_map: &HashMap<String, ClassInfo>,
-) -> bool {
-    class_derives_from_inner(concrete_type, base_type, class_map, &mut HashSet::new())
-}
-
-fn class_derives_from_inner(
-    concrete_type: &str,
-    base_type: &str,
-    class_map: &HashMap<String, ClassInfo>,
-    visited: &mut HashSet<String>,
-) -> bool {
-    if concrete_type == base_type {
-        return true;
-    }
-    if !visited.insert(concrete_type.to_string()) {
-        return false;
-    }
-    let Some(class_info) = class_map.get(concrete_type) else {
-        return false;
-    };
-    class_info
-        .bases
-        .iter()
-        .any(|base| class_derives_from_inner(&base.base, base_type, class_map, visited))
-}
-
-fn is_subclass_inner(
-    concrete_type: &str,
-    base_type: &str,
-    class_map: &HashMap<String, ClassInfo>,
-    visited: &mut HashSet<String>,
-) -> bool {
-    if !visited.insert(concrete_type.to_string()) {
-        return false;
-    }
-    let Some(class_info) = class_map.get(concrete_type) else {
-        return false;
-    };
-    class_info.bases.iter().any(|base| {
-        base.base == base_type || is_subclass_inner(&base.base, base_type, class_map, visited)
-    })
 }
 
 fn code_for_kind(kind: &SymbolKind) -> &'static str {

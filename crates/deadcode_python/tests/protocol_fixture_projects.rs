@@ -84,6 +84,20 @@ fn protocol_imported_default_parameter_concrete_flow_marks_implementation_method
 }
 
 #[test]
+fn base_typed_field_forwards_virtual_methods() {
+    let report = analyze_fixture("base_typed_field_forwards_virtual_methods");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.TrackedCacheConnection.get_item".to_string()));
+    assert!(!symbols.contains(&"pkg.main.TrackedCacheConnection.set_item".to_string()));
+    assert!(!symbols.contains(&"pkg.main.MemoryCacheConnection.get_item".to_string()));
+    assert!(!symbols.contains(&"pkg.main.MemoryCacheConnection.set_item".to_string()));
+    assert!(symbols.contains(&"pkg.main.UnusedCacheConnection.get_item".to_string()));
+    assert!(symbols.contains(&"pkg.main.UnusedCacheConnection.set_item".to_string()));
+}
+
+#[test]
 fn protocol_constructor_field_flow_from_pytest_fixture_marks_fake_methods_live() {
     let report = analyze_fixture("protocol_constructor_field_flow_from_pytest_fixture");
     let symbols = finding_symbols(&report);
