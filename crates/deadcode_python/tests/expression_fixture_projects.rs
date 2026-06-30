@@ -38,6 +38,16 @@ fn generator_expression_references_are_traversed() {
 }
 
 #[test]
+fn lambda_parameter_body_globals_are_traversed() {
+    let report = analyze_fixture("lambda_parameter_body_globals");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"pkg.main.example_tag".to_string()));
+    assert!(symbols.contains(&"pkg.main.dead_tag".to_string()));
+}
+
+#[test]
 fn async_statements_traverse_references() {
     let report = analyze_fixture("async_statements_traverse_references");
     let symbols = finding_symbols(&report);

@@ -40,17 +40,13 @@ impl SymbolCollector<'_> {
         lambda: &ast::ExprLambda,
         types: &HashMap<String, TypeBinding>,
     ) {
-        if lambda
-            .parameters
-            .as_deref()
-            .is_some_and(|parameters| parameters.iter().next().is_some())
-        {
-            return;
-        }
         let mut scoped_types = types.clone();
         if let Some(parameters) = lambda.parameters.as_deref() {
             for parameter in parameters.iter() {
-                scoped_types.remove(parameter.as_parameter().name.as_str());
+                scoped_types.insert(
+                    parameter.as_parameter().name.as_str().to_string(),
+                    external_unknown_binding(),
+                );
             }
         }
         self.collect_expr_references(owner, &lambda.body, &scoped_types);
@@ -106,4 +102,12 @@ fn is_callable_type(type_name: &str) -> bool {
         type_name,
         "typing.Callable" | "collections.abc.Callable" | "Callable"
     )
+}
+
+fn external_unknown_binding() -> TypeBinding {
+    TypeBinding {
+        base: "typing.Any".to_string(),
+        args: Vec::new(),
+        external: true,
+    }
 }
