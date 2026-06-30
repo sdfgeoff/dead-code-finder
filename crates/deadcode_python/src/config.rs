@@ -4,10 +4,17 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+#[path = "config_rules.rs"]
+mod config_rules;
+
+use config_rules::validate_rules;
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectConfig {
     pub roots: Vec<RootConfig>,
+    #[serde(default)]
+    pub type_sources: Vec<RootConfig>,
     #[serde(default)]
     pub root_groups: Vec<RootGroupConfig>,
     #[serde(default)]
@@ -44,6 +51,7 @@ pub struct LoadedProjectConfig {
     pub config_path: PathBuf,
     pub project_dir: PathBuf,
     pub roots: Vec<ResolvedRoot>,
+    pub type_sources: Vec<ResolvedRoot>,
     pub root_groups: Vec<LoadedRootGroup>,
     pub include_tests: bool,
     pub test_patterns: Vec<String>,
@@ -273,13 +281,15 @@ pub fn load_project_config(path: &Path) -> Result<LoadedProjectConfig, ConfigErr
             source,
         })?;
 
-    let roots = resolve_roots(&project_dir, &config)?;
+    let roots = resolve_roots(&project_dir, &config.roots, true)?;
+    let type_sources = resolve_roots(&project_dir, &config.type_sources, false)?;
     let root_groups = root_groups(&config)?;
     validate_rules(&config.rules)?;
     Ok(LoadedProjectConfig {
         config_path,
         project_dir,
         roots,
+        type_sources,
         root_groups,
         include_tests: config.include_tests,
         test_patterns: config.test_patterns,
@@ -341,196 +351,17 @@ fn validate_root_groups(groups: &[LoadedRootGroup]) -> Result<Vec<LoadedRootGrou
     Ok(groups.to_vec())
 }
 
-fn validate_rules(rules: &RuleConfig) -> Result<(), ConfigError> {
-    for constructor in &rules.constructors {
-        if constructor.match_.trim().is_empty() {
-            return Err(ConfigError::InvalidRule {
-                message: "constructor match must not be empty".to_string(),
-            });
-        }
-        if constructor.produces_type.trim().is_empty() {
-            return Err(ConfigError::InvalidRule {
-                message: "constructor producesType must not be empty".to_string(),
-            });
-        }
-    }
-    for factory_return in &rules.factory_returns {
-        if factory_return.function.trim().is_empty() {
-            return Err(ConfigError::InvalidRule {
-                message: "factory return function must not be empty".to_string(),
-            });
-        }
-        if factory_return.type_keyword.trim().is_empty() && factory_return.type_position.is_none() {
-            return Err(ConfigError::InvalidRule {
-                message: "factory return typeKeyword or typePosition must be configured"
-                    .to_string(),
-            });
-        }
-        if factory_return
-            .input_type_keyword
-            .as_ref()
-            .is_some_and(|keyword| keyword.trim().is_empty())
-        {
-            return Err(ConfigError::InvalidRule {
-                message: "factory return inputTypeKeyword must not be empty".to_string(),
-            });
-        }
-        if let Some(container) = &factory_return.return_container {
-            if container != "list" {
-                return Err(ConfigError::InvalidRule {
-                    message: format!("unsupported factory returnContainer {container}"),
-                });
-            }
-        }
-    }
-    for class_surface in &rules.class_surfaces {
-        if class_surface.base.trim().is_empty() {
-            return Err(ConfigError::InvalidRule {
-                message: "class surface base must not be empty".to_string(),
-            });
-        }
-        if class_surface.effect != "markClassAttributes" {
-            return Err(ConfigError::InvalidRule {
-                message: format!("unsupported class surface effect {}", class_surface.effect),
-            });
-        }
-    }
-    for decorator in &rules.decorators {
-        if decorator.function.is_none() && decorator.receiver_type.is_none() {
-            return Err(ConfigError::InvalidRule {
-                message: "decorator rules require function or receiverType plus methods"
-                    .to_string(),
-            });
-        }
-        if decorator
-            .function
-            .as_ref()
-            .is_some_and(|function| function.trim().is_empty())
-        {
-            return Err(ConfigError::InvalidRule {
-                message: "decorator function must not be empty".to_string(),
-            });
-        }
-        if decorator
-            .receiver_type
-            .as_ref()
-            .is_some_and(|receiver_type| receiver_type.trim().is_empty())
-        {
-            return Err(ConfigError::InvalidRule {
-                message: "decorator receiverType must not be empty".to_string(),
-            });
-        }
-        if decorator.receiver_type.is_some() && decorator.methods.is_empty() {
-            return Err(ConfigError::InvalidRule {
-                message: "decorator receiverType rules require methods".to_string(),
-            });
-        }
-        if !matches!(
-            decorator.effect.as_str(),
-            "registerDecoratedFunction"
-                | "registerBoundaryFunction"
-                | "wrapWithCallableType"
-                | "useFunctionParameters"
-        ) {
-            return Err(ConfigError::InvalidRule {
-                message: format!("unsupported decorator effect {}", decorator.effect),
-            });
-        }
-        if decorator.effect == "wrapWithCallableType"
-            && decorator
-                .callable_type
-                .as_ref()
-                .is_none_or(|callable_type| callable_type.trim().is_empty())
-        {
-            return Err(ConfigError::InvalidRule {
-                message: "wrapWithCallableType decorator rules require callableType".to_string(),
-            });
-        }
-    }
-    for call in &rules.calls {
-        if call.function.is_none() && (call.receiver_type.is_none() || call.method.is_none()) {
-            return Err(ConfigError::InvalidRule {
-                message: "call rules require function or receiverType plus method".to_string(),
-            });
-        }
-        if !matches!(
-            call.effect.as_str(),
-            "useCallableArgument" | "connectRouter" | "useArgumentMember" | "replaceCallableReturn"
-        ) {
-            return Err(ConfigError::InvalidRule {
-                message: format!("unsupported call effect {}", call.effect),
-            });
-        }
-        if call.effect == "useArgumentMember"
-            && call
-                .member
-                .as_ref()
-                .is_none_or(|member| member.trim().is_empty())
-        {
-            return Err(ConfigError::InvalidRule {
-                message: "useArgumentMember call rules require member".to_string(),
-            });
-        }
-    }
-    for fluent_method in &rules.fluent_methods {
-        if fluent_method.receiver_type.trim().is_empty() {
-            return Err(ConfigError::InvalidRule {
-                message: "fluent method receiverType must not be empty".to_string(),
-            });
-        }
-        if fluent_method.methods.is_empty() {
-            return Err(ConfigError::InvalidRule {
-                message: "fluent method methods must not be empty".to_string(),
-            });
-        }
-    }
-    for route_glob in &rules.route_globs {
-        if route_glob.when_function_called.trim().is_empty() {
-            return Err(ConfigError::InvalidRule {
-                message: "route glob whenFunctionCalled must not be empty".to_string(),
-            });
-        }
-        if route_glob.glob.trim().is_empty() {
-            return Err(ConfigError::InvalidRule {
-                message: "route glob glob must not be empty".to_string(),
-            });
-        }
-        if route_glob.export.trim().is_empty() {
-            return Err(ConfigError::InvalidRule {
-                message: "route glob export must not be empty".to_string(),
-            });
-        }
-        if route_glob.effect != "includeRouter" {
-            return Err(ConfigError::InvalidRule {
-                message: format!("unsupported route glob effect {}", route_glob.effect),
-            });
-        }
-    }
-    for assignment in &rules.assignments {
-        if !matches!(assignment.effect.as_str(), "overrideCallableReturn") {
-            return Err(ConfigError::InvalidRule {
-                message: format!("unsupported assignment effect {}", assignment.effect),
-            });
-        }
-        if assignment.receiver_type.trim().is_empty() || assignment.member.trim().is_empty() {
-            return Err(ConfigError::InvalidRule {
-                message: "assignment rules require receiverType and member".to_string(),
-            });
-        }
-    }
-    Ok(())
-}
-
 pub fn resolve_roots(
     project_dir: &Path,
-    config: &ProjectConfig,
+    configured_roots: &[RootConfig],
+    require_roots: bool,
 ) -> Result<Vec<ResolvedRoot>, ConfigError> {
-    if config.roots.is_empty() {
+    if require_roots && configured_roots.is_empty() {
         return Err(ConfigError::EmptyRoots);
     }
 
     let mut roots = Vec::new();
-    for root in &config.roots {
+    for root in configured_roots {
         let paths = expand_root_path(project_dir, &root.path)?;
         for path in paths {
             let module = expand_module_template(&root.module, &path);

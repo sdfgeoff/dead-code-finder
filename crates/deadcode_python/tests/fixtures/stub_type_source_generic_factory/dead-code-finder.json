@@ -1,0 +1,5 @@
+{
+  "roots": [{ "path": "app", "module": "app" }],
+  "typeSources": [{ "path": "stubs/typedlib", "module": "typedlib" }],
+  "entrypoints": ["app/main.py"]
+}

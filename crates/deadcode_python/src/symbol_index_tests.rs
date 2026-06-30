@@ -186,6 +186,7 @@ class ExampleEntity:
             config_path: workspace.join("dead-code-finder.json"),
             project_dir: workspace.to_path_buf(),
             roots,
+            type_sources: Vec::new(),
             root_groups: vec![crate::config::LoadedRootGroup {
                 name: "main".to_string(),
                 entrypoints: Vec::new(),

@@ -12,6 +12,7 @@ fn resolves_explicit_roots() {
             path: "example_app".to_string(),
             module: "example_app".to_string(),
         }],
+        type_sources: vec![],
         root_groups: vec![],
         entrypoints: vec![],
         weak_entrypoints: vec![],
@@ -20,7 +21,7 @@ fn resolves_explicit_roots() {
         rules: RuleConfig::default(),
     };
 
-    let roots = resolve_roots(&workspace, &config).unwrap();
+    let roots = resolve_roots(&workspace, &config.roots, true).unwrap();
 
     assert_eq!(
         roots,
@@ -41,6 +42,7 @@ fn expands_workspace_root_globs() {
             path: "packages/*/src/*".to_string(),
             module: "{basename}".to_string(),
         }],
+        type_sources: vec![],
         root_groups: vec![],
         entrypoints: vec![],
         weak_entrypoints: vec![],
@@ -49,7 +51,7 @@ fn expands_workspace_root_globs() {
         rules: RuleConfig::default(),
     };
 
-    let roots = resolve_roots(&workspace, &config).unwrap();
+    let roots = resolve_roots(&workspace, &config.roots, true).unwrap();
 
     assert_eq!(
         roots,
@@ -82,6 +84,7 @@ fn rejects_duplicate_modules() {
                 module: "same".to_string(),
             },
         ],
+        type_sources: vec![],
         root_groups: vec![],
         entrypoints: vec![],
         weak_entrypoints: vec![],
@@ -90,7 +93,7 @@ fn rejects_duplicate_modules() {
         rules: RuleConfig::default(),
     };
 
-    let error = resolve_roots(&workspace, &config).unwrap_err();
+    let error = resolve_roots(&workspace, &config.roots, true).unwrap_err();
 
     assert!(matches!(error, ConfigError::DuplicateModule { module } if module == "same"));
 }
@@ -99,10 +102,12 @@ fn rejects_duplicate_modules() {
 fn loads_json_config() {
     let workspace = test_workspace("loads_json_config");
     fs::create_dir_all(workspace.join("pkg")).unwrap();
+    fs::create_dir_all(workspace.join("vendor/typedpkg")).unwrap();
     fs::write(
         workspace.join("dead-code-finder.json"),
         r#"{
             "roots": [{"path": "pkg", "module": "pkg"}],
+            "typeSources": [{"path": "vendor/typedpkg", "module": "typedpkg"}],
             "entrypoints": ["main.py"],
             "weakEntrypoints": ["scripts/*.py"],
             "includeTests": true,
@@ -128,6 +133,7 @@ fn loads_json_config() {
     assert!(!loaded.root_groups[2].counts_as_used);
     assert!(loaded.include_tests);
     assert_eq!(loaded.roots[0].module, "pkg");
+    assert_eq!(loaded.type_sources[0].module, "typedpkg");
     assert_eq!(loaded.rules.class_surfaces[0].base, "pkg.orm.Base");
 }
 

@@ -42,6 +42,9 @@ pub fn find_unused_symbols(index: &SymbolIndex) -> Vec<Finding> {
     let counted_live = counted_live_symbols(index, &live_by_group);
     let mut findings = Vec::new();
     for module in &index.modules {
+        if !module.reportable {
+            continue;
+        }
         for symbol in &module.symbols {
             if symbol.kind == SymbolKind::Module {
                 continue;

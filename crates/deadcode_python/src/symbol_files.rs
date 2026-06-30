@@ -8,7 +8,7 @@ pub(super) fn collect_python_files(
     files: &mut Vec<PathBuf>,
 ) -> Result<(), SymbolIndexError> {
     if path.is_file() {
-        if path.extension().is_some_and(|extension| extension == "py") {
+        if is_python_source(path) {
             files.push(path.to_path_buf());
         }
         return Ok(());
@@ -27,13 +27,15 @@ pub(super) fn collect_python_files(
         let entry_path = entry.path();
         if entry_path.is_dir() {
             collect_python_files(&entry_path, files)?;
-        } else if entry_path
-            .extension()
-            .is_some_and(|extension| extension == "py")
-        {
+        } else if is_python_source(&entry_path) {
             files.push(entry_path);
         }
     }
 
     Ok(())
+}
+
+fn is_python_source(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|extension| matches!(extension.to_str(), Some("py" | "pyi")))
 }

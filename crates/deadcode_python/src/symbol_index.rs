@@ -4,6 +4,8 @@ mod source_locator;
 mod symbol_allow_comments;
 #[path = "symbol_collector.rs"]
 mod symbol_collector;
+#[path = "symbol_module_path.rs"]
+mod symbol_module_path;
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -11,13 +13,14 @@ use std::path::{Path, PathBuf};
 
 use deadcode_core::{Diagnostic, Severity, SourceSpan, SymbolKind};
 
-use crate::config::{LoadedProjectConfig, ResolvedRoot, RuleConfig};
+use crate::config::{LoadedProjectConfig, RuleConfig};
 use crate::symbol_files::collect_python_files;
 use crate::symbol_roots::{is_test_file, root_groups_for_file, root_symbols_for_module};
 
 pub(crate) use self::source_locator::SourceLocator;
 use self::symbol_allow_comments::{allow_comment_roots, EXPLICITLY_ALLOWED_GROUP};
 use self::symbol_collector::SymbolCollector;
+use self::symbol_module_path::module_name_for_file;
 
 pub(crate) type ReexportMap = HashMap<(String, String), ImportTarget>;
 
@@ -62,6 +65,7 @@ pub struct ModuleIndex {
     pub unresolved_receivers: Vec<UnresolvedReceiver>,
     pub unsupported_expansions: Vec<UnsupportedExpansion>,
     pub is_test: bool,
+    pub reportable: bool,
     pub root_symbols: Vec<RootSymbol>,
 }
 
@@ -357,6 +361,17 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
         .collect();
     let mut project_files = Vec::new();
 
+    for root in &config.type_sources {
+        let mut files = Vec::new();
+        collect_python_files(&root.path, &mut files)?;
+        files.sort();
+
+        for file in files {
+            let module = module_name_for_file(root, &file);
+            index.known_modules.insert(module.clone());
+            project_files.push((file, module, false));
+        }
+    }
     for root in &config.roots {
         let mut files = Vec::new();
         collect_python_files(&root.path, &mut files)?;
@@ -365,11 +380,11 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
         for file in files {
             let module = module_name_for_file(root, &file);
             index.known_modules.insert(module.clone());
-            project_files.push((file, module));
+            project_files.push((file, module, true));
         }
     }
 
-    for (file, module) in &project_files {
+    for (file, module, reportable) in &project_files {
         let module_index = index_module(
             module,
             file,
@@ -382,6 +397,7 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             &index.primary_root_group,
             Vec::new(),
             false,
+            *reportable,
         )?;
         index.modules.push(module_index.module);
     }
@@ -389,7 +405,7 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
     index.modules.clear();
 
     let mut all_classes = Vec::new();
-    for (file, module) in &project_files {
+    for (file, module, reportable) in &project_files {
         let module_index = index_module(
             module,
             file,
@@ -402,13 +418,14 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             &index.primary_root_group,
             Vec::new(),
             false,
+            *reportable,
         )?;
         all_classes.extend(module_index.module.classes.clone());
     }
 
     let mut all_value_bindings = Vec::new();
     let mut all_function_signatures = Vec::new();
-    for (file, module) in &project_files {
+    for (file, module, reportable) in &project_files {
         let module_index = index_module(
             module,
             file,
@@ -421,13 +438,14 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             &index.primary_root_group,
             Vec::new(),
             false,
+            *reportable,
         )?;
         all_value_bindings.extend(module_index.module.value_bindings.clone());
         all_function_signatures.extend(module_index.module.function_signatures.clone());
     }
 
     all_function_signatures.clear();
-    for (file, module) in &project_files {
+    for (file, module, reportable) in &project_files {
         let module_index = index_module(
             module,
             file,
@@ -440,12 +458,13 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             &index.primary_root_group,
             Vec::new(),
             false,
+            *reportable,
         )?;
         all_function_signatures.extend(module_index.module.function_signatures.clone());
     }
 
     all_classes.clear();
-    for (file, module) in &project_files {
+    for (file, module, reportable) in &project_files {
         let module_index = index_module(
             module,
             file,
@@ -458,11 +477,12 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             &index.primary_root_group,
             Vec::new(),
             false,
+            *reportable,
         )?;
         all_classes.extend(module_index.module.classes.clone());
     }
 
-    for (file, module) in &project_files {
+    for (file, module, reportable) in &project_files {
         let module_index = index_module(
             module,
             file,
@@ -473,8 +493,11 @@ pub fn index_project(config: &LoadedProjectConfig) -> Result<SymbolIndex, Symbol
             &all_function_signatures,
             &reexports,
             &index.primary_root_group,
-            root_groups_for_file(config, file),
-            is_test_file(config, file),
+            reportable
+                .then(|| root_groups_for_file(config, file))
+                .unwrap_or_default(),
+            *reportable && is_test_file(config, file),
+            *reportable,
         )?;
         index
             .parse_diagnostics
@@ -560,6 +583,7 @@ fn index_module(
     primary_root_group: &str,
     configured_root_groups: Vec<String>,
     is_test: bool,
+    reportable: bool,
 ) -> Result<IndexedModuleResult, SymbolIndexError> {
     let source = fs::read_to_string(file).map_err(|source| SymbolIndexError::ReadFile {
         path: file.to_path_buf(),
@@ -636,16 +660,19 @@ fn index_module(
         }
     }
 
-    let mut root_symbols = root_symbols_for_module(
-        module,
-        &symbols,
-        &pytest_fixtures,
-        primary_root_group,
-        configured_root_groups,
-        is_test,
-        has_main_entrypoint,
-    );
-    root_symbols.extend(allow_comment_roots(&source, &symbols));
+    let mut root_symbols = Vec::new();
+    if reportable {
+        root_symbols = root_symbols_for_module(
+            module,
+            &symbols,
+            &pytest_fixtures,
+            primary_root_group,
+            configured_root_groups,
+            is_test,
+            has_main_entrypoint,
+        );
+        root_symbols.extend(allow_comment_roots(&source, &symbols));
+    }
 
     Ok(IndexedModuleResult {
         module: ModuleIndex {
@@ -669,26 +696,11 @@ fn index_module(
             unresolved_receivers,
             unsupported_expansions,
             is_test,
+            reportable,
             root_symbols,
         },
         parse_diagnostics,
     })
-}
-
-fn module_name_for_file(root: &ResolvedRoot, file: &Path) -> String {
-    let relative = file.strip_prefix(&root.path).unwrap_or(file);
-    let mut parts = relative
-        .iter()
-        .filter_map(|part| part.to_str())
-        .map(strip_py_extension)
-        .filter(|part| part != "__init__")
-        .collect::<Vec<_>>();
-    parts.insert(0, root.module.clone());
-    parts.join(".")
-}
-
-fn strip_py_extension(part: &str) -> String {
-    part.strip_suffix(".py").unwrap_or(part).to_string()
 }
 
 #[cfg(test)]
