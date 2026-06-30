@@ -25,6 +25,7 @@ impl SymbolCollector<'_> {
     ) {
         let is_method_call = if let ast::Expr::Attribute(attribute) = call.func.as_ref() {
             self.collect_member_reference(owner, attribute, AccessKind::Call, types);
+            self.collect_callable_object_call(owner, &call.func, types);
             self.collect_typed_dict_get_call_reference(owner, call, types);
             self.collect_expr_references(owner, &attribute.value, types);
             true
@@ -319,16 +320,13 @@ impl SymbolCollector<'_> {
         func: &ast::Expr,
         types: &HashMap<String, TypeBinding>,
     ) {
-        let ast::Expr::Name(name) = func else {
-            return;
-        };
-        let Some(callee_type) = types.get(name.id.as_str()) else {
+        let Some(callee_type) = self.callable_object_type(func, types) else {
             return;
         };
         if callee_type.external {
             return;
         }
-        for target_base in member_reference_target_bases(callee_type) {
+        for target_base in member_reference_target_bases(&callee_type) {
             push_member_reference(
                 self.member_refs,
                 self.locator,
@@ -338,6 +336,17 @@ impl SymbolCollector<'_> {
                 AccessKind::Call,
                 func.range(),
             );
+        }
+    }
+
+    fn callable_object_type(
+        &self,
+        func: &ast::Expr,
+        types: &HashMap<String, TypeBinding>,
+    ) -> Option<TypeBinding> {
+        match func {
+            ast::Expr::Name(name) => types.get(name.id.as_str()).cloned(),
+            expr => self.receiver_type_for_expr(expr, types),
         }
     }
 

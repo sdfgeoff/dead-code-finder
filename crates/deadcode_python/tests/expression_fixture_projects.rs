@@ -98,6 +98,7 @@ fn callable_object_invocation_marks_call_method_live() {
 
     assert!(report.diagnostics.is_empty());
     assert!(!symbols.contains(&"pkg.main.Worker.__call__".to_string()));
+    assert!(!symbols.contains(&"pkg.main.Endpoint.__call__".to_string()));
     assert!(symbols.contains(&"pkg.main.Worker.unused".to_string()));
     assert!(symbols.contains(&"pkg.main.UnusedWorker.__call__".to_string()));
 }
