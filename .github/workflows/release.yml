@@ -1,0 +1,169 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  binaries:
+    name: Binary ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+            bin: dead-code-finder
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            archive: tar.gz
+            bin: dead-code-finder
+          - os: macos-13
+            target: x86_64-apple-darwin
+            archive: tar.gz
+            bin: dead-code-finder
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+            bin: dead-code-finder
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+            bin: dead-code-finder.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build binary
+        run: cargo build --locked --release --bin dead-code-finder --target ${{ matrix.target }}
+
+      - name: Package archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          asset="dead-code-finder-${{ matrix.target }}"
+          binary="target/${{ matrix.target }}/release/${{ matrix.bin }}"
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            7z a "dist/${asset}.zip" "$binary"
+          else
+            tar -czf "dist/${asset}.tar.gz" -C "target/${{ matrix.target }}/release" "${{ matrix.bin }}"
+          fi
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.target }}
+          path: dist/*
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+
+  wheels:
+    name: Wheel ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            platform: manylinux_2_17_x86_64
+            bin: dead-code-finder
+          - os: macos-13
+            target: x86_64-apple-darwin
+            platform: macosx_10_12_x86_64
+            bin: dead-code-finder
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            platform: macosx_11_0_arm64
+            bin: dead-code-finder
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform: win_amd64
+            bin: dead-code-finder.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build binary
+        run: cargo build --locked --release --bin dead-code-finder --target ${{ matrix.target }}
+
+      - name: Set Python package version
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGE_VERSION="${GITHUB_REF_NAME#v}" python -c 'import os; from pathlib import Path; path = Path("python/pyproject.toml"); path.write_text(path.read_text().replace("version = \"0.1.0\"", "version = \"" + os.environ["PACKAGE_VERSION"] + "\""))'
+
+      - name: Build wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip build setuptools wheel
+          cp "target/${{ matrix.target }}/release/${{ matrix.bin }}" "python/dead_code_finder/bin/${{ matrix.bin }}"
+          chmod +x "python/dead_code_finder/bin/${{ matrix.bin }}" || true
+          (cd python && python -m build --wheel --outdir ../dist --config-setting=--build-option=--plat-name --config-setting=--build-option="${{ matrix.platform }}")
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.platform }}
+          path: dist/*.whl
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.whl
+
+  publish-pypi:
+    name: Publish PyPI
+    runs-on: ubuntu-latest
+    needs: wheels
+    environment: pypi
+
+    steps:
+      - name: Download wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish wheels
+        uses: pypa/gh-action-pypi-publish@release/v1

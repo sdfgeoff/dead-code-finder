@@ -11,3 +11,8 @@ Commit after doing work, no need to wait for the entity to tell you to.
 Refactor as needed.
 
 Assets (icons, images, audio) should be separate files on disk rather than constructed in code. Use helper scripts to generate them if needed.
+
+# Expanding this project from existing code
+
+A useful way to extend this project is to point it at an existing codebase and turn false-positives into unit tests.
+When making these unit tests, preserve the necessary structures to reproduce the failure, but replace any project-specific terminology with generic naming: eg `ExampleClass` or `MyEnum.UNUSED_VARIANT`.

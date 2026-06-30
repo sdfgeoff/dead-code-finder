@@ -1,3 +1,8 @@
 /target/
 /todo/
 /done/
+/dist/
+/python/build/
+/python/*.egg-info/
+/python/dead_code_finder/bin/dead-code-finder
+/python/dead_code_finder/bin/dead-code-finder.exe

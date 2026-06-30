@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=70.1", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dead-code-finder"
+version = "0.1.0"
+description = "Static dead code finder for Python projects"
+requires-python = ">=3.8"
+license = "MIT"
+authors = [
+  { name = "dead-code-finder contributors" },
+]
+
+[project.scripts]
+dead-code-finder = "dead_code_finder:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dead_code_finder*"]
+
+[tool.setuptools.package-data]
+dead_code_finder = ["bin/dead-code-finder", "bin/dead-code-finder.exe"]
