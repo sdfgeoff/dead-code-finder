@@ -46,11 +46,11 @@ fn string_format_marks_model_fields_live() {
     let symbols = finding_symbols(&report);
 
     assert!(report.diagnostics.is_empty());
-    assert!(!symbols.contains(&"pkg.main.Notification.task_uuid".to_string()));
-    assert!(!symbols.contains(&"pkg.main.Notification.resource_id".to_string()));
-    assert!(!symbols.contains(&"pkg.main.Notification.old_status".to_string()));
-    assert!(!symbols.contains(&"pkg.main.Notification.new_status".to_string()));
-    assert!(symbols.contains(&"pkg.main.Notification.unused_field".to_string()));
+    assert!(!symbols.contains(&"pkg.main.ExampleMessage.field_uuid".to_string()));
+    assert!(!symbols.contains(&"pkg.main.ExampleMessage.resource_id".to_string()));
+    assert!(!symbols.contains(&"pkg.main.ExampleMessage.field_old".to_string()));
+    assert!(!symbols.contains(&"pkg.main.ExampleMessage.field_new".to_string()));
+    assert!(symbols.contains(&"pkg.main.ExampleMessage.field_unused".to_string()));
 }
 
 #[test]
@@ -248,12 +248,12 @@ fn reexported_enum_iteration_marks_members() {
     let symbols = finding_symbols(&report);
 
     assert!(report.diagnostics.is_empty());
-    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.SUBMITTER".to_string()));
-    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.CONTACT".to_string()));
-    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.EDITOR".to_string()));
-    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.TASK_EDITOR".to_string()));
-    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.INVOICE_RECIPIENT".to_string()));
-    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.ACCOUNT_HOLDER".to_string()));
+    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.ROLE_1".to_string()));
+    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.ROLE_2".to_string()));
+    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.ROLE_3".to_string()));
+    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.TASK_ROLE_3".to_string()));
+    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.ROLE_5".to_string()));
+    assert!(!symbols.contains(&"pkg.models.examples.ExampleRole.ROLE_6".to_string()));
 }
 
 #[test]

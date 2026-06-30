@@ -1,10 +1,10 @@
 from pkg.framework import Router
-from pkg.examples import UserTagEnum
+from pkg.examples import ExampleRole
 
 
 router = Router()
 
 
 @router.post("/{tagname}")
-def post_user_tag(tagname: UserTagEnum) -> None:
+def post_user_tag(tagname: ExampleRole) -> None:
     print(tagname)

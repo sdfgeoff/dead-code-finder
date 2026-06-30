@@ -45,7 +45,10 @@ class ExampleEntity:
         assert!(symbols.contains(&("pkg.service.ExampleEntity", SymbolKind::Class)));
         assert!(symbols.contains(&("pkg.service.ExampleEntity.save", SymbolKind::Method)));
         assert!(symbols.contains(&("pkg.service.ExampleEntity.configure", SymbolKind::Method)));
-        assert!(symbols.contains(&("pkg.service.ExampleEntity.class_attr", SymbolKind::Attribute)));
+        assert!(symbols.contains(&(
+            "pkg.service.ExampleEntity.class_attr",
+            SymbolKind::Attribute
+        )));
         assert!(symbols.contains(&("pkg.service.ExampleEntity.name", SymbolKind::Field)));
         assert!(symbols.contains(&("pkg.service.ExampleEntity.saved", SymbolKind::Attribute)));
         assert!(symbols.contains(&("pkg.service.ExampleEntity.flag", SymbolKind::Field)));
@@ -165,8 +168,16 @@ class ExampleEntity:
         fs::create_dir_all(package.join("models")).unwrap();
         fs::write(package.join("__init__.py"), "").unwrap();
         fs::write(package.join("models/__init__.py"), "").unwrap();
-        fs::write(package.join("models/entity.py"), "class ExampleEntity:\n    pass\n").unwrap();
-        fs::write(package.join("consumer.py"), "from pkg.models import entity\n").unwrap();
+        fs::write(
+            package.join("models/entity.py"),
+            "class ExampleEntity:\n    pass\n",
+        )
+        .unwrap();
+        fs::write(
+            package.join("consumer.py"),
+            "from pkg.models import entity\n",
+        )
+        .unwrap();
         let config = loaded_config(&workspace, vec![root(&package, "pkg")]);
 
         let index = index_project(&config).unwrap();

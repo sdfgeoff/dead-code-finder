@@ -87,7 +87,7 @@ fn contextmanager_wraps_generator_return() {
     assert!(!symbols.contains(&"pkg.main.Resource.used".to_string()));
     assert!(!symbols.contains(&"pkg.main.Resource.used_field".to_string()));
     assert!(symbols.contains(&"pkg.main.Resource.unused".to_string()));
-    assert!(symbols.contains(&"pkg.main.Resource.unused_field".to_string()));
+    assert!(symbols.contains(&"pkg.main.Resource.field_unused".to_string()));
 }
 
 #[test]

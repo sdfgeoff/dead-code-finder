@@ -36,8 +36,8 @@ fn boundary_enum_parameter_marks_all_members() {
     let symbols = finding_symbols(&report);
 
     assert!(report.diagnostics.is_empty());
-    assert!(!symbols.contains(&"pkg.examples.UserTagEnum.ROLE_ALPHA".to_string()));
-    assert!(!symbols.contains(&"pkg.examples.UserTagEnum.ROLE_BETA".to_string()));
+    assert!(!symbols.contains(&"pkg.examples.ExampleRole.ROLE_ALPHA".to_string()));
+    assert!(!symbols.contains(&"pkg.examples.ExampleRole.ROLE_BETA".to_string()));
 }
 
 #[test]

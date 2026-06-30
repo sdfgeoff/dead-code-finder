@@ -57,5 +57,5 @@ get_event = query_returning_one(
 get_associations = query_returning_list(
     PositionalInput,
     PositionalOutput,
-    "SELECT user_id, group_id, record_id FROM user_company_customer",
+    "SELECT user_id, group_id, record_id FROM user_group_record",
 )

@@ -18,17 +18,17 @@ class Properties:
     unused: str
 
 
-CarbonFeature = Feature[int, str | None, Properties]
+ValueFeature = Feature[int, str | None, Properties]
 
 
-class CarbonArea:
-    features: list[CarbonFeature]
+class ValueArea:
+    features: list[ValueFeature]
 
 
-def run(area: CarbonArea) -> tuple[str, str]:
+def run(area: ValueArea) -> tuple[str, str]:
     largest_feature = max(area.features, key=lambda f: f.properties.amount)
     largest_props = largest_feature.properties
     return largest_props.report_category, largest_props.credit_scheme
 
 
-run(CarbonArea())
+run(ValueArea())

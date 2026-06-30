@@ -1,23 +1,23 @@
-class Notification:
-    task_uuid: str
+class ExampleMessage:
+    field_uuid: str
     resource_id: int
-    old_status: str
-    new_status: str
-    unused_field: str
+    field_old: str
+    field_new: str
+    field_unused: str
 
 
-def render(data: Notification) -> str:
-    return "ExampleItem {data.task_uuid} on resource {data.resource_id}: {data.old_status} -> {data.new_status}".format(
+def render(data: ExampleMessage) -> str:
+    return "Record {data.field_uuid} in resource {data.resource_id}: {data.field_old} -> {data.field_new}".format(
         data=data
     )
 
 
 def main() -> None:
-    note = Notification()
-    note.task_uuid = "item-1"
+    note = ExampleMessage()
+    note.field_uuid = "item-1"
     note.resource_id = 7
-    note.old_status = "open"
-    note.new_status = "done"
+    note.field_old = "open"
+    note.field_new = "done"
     print(render(note))
 
 

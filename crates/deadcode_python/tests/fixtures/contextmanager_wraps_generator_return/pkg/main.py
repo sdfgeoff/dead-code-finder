@@ -4,13 +4,13 @@ from typing import Generator
 
 class Resource:
     used_field: str
-    unused_field: str
+    field_unused: str
 
     def used(self) -> None:
         _ = self.used_field
 
     def unused(self) -> None:
-        _ = self.unused_field
+        _ = self.field_unused
 
 
 def get_resource() -> Generator[Resource, None, None]:

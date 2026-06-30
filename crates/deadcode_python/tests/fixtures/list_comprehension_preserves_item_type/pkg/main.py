@@ -27,12 +27,12 @@ AnyExampleEvent = TypeAliasType(
 )
 
 
-def get_forest_events() -> list[AnyExampleEvent]:
+def get_example_input_events() -> list[AnyExampleEvent]:
     return []
 
 
 def needs_region() -> bool:
-    all_events = get_forest_events()
+    all_events = get_example_input_events()
     all_planting_events = [
         event for event in all_events if event.event_type == "planting"
     ]

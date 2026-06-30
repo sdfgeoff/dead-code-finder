@@ -13,7 +13,7 @@ class ExampleFileItem(BaseModel):
     path: str
 
 
-ExampleItem = Annotated[EmailTask | ExampleFileItem, Field(discriminator="item_kind")]
+Record = Annotated[EmailRecord | ExampleFileItem, Field(discriminator="item_kind")]
 
 
 class Envelope(BaseModel):

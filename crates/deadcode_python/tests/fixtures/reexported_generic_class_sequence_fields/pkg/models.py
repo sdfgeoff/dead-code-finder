@@ -2,12 +2,12 @@ from pkg import Feature
 from pkg.main import Properties
 
 
-CarbonFeature = Feature[Properties]
+ValueFeature = Feature[Properties]
 
 
-class CarbonArea:
-    features: list[CarbonFeature]
+class ValueArea:
+    features: list[ValueFeature]
 
 
 class AreaWithScheme:
-    area: CarbonArea
+    area: ValueArea
