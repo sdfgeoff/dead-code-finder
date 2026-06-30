@@ -30,6 +30,17 @@ fn bare_decorator_rule_registers_function() {
 }
 
 #[test]
+fn live_flow_modules_register_bare_decorated_functions() {
+    let report = analyze_fixture("live_flow_modules_register_bare_decorated_functions");
+    let symbols = finding_symbols(&report);
+
+    assert!(report.diagnostics.is_empty());
+    assert!(!symbols.contains(&"example_flow.example_flow".to_string()));
+    assert!(!symbols.contains(&"example_flow.helper".to_string()));
+    assert!(symbols.contains(&"example_flow.dead_helper".to_string()));
+}
+
+#[test]
 fn decorator_factory_callable_wrapper_object_marks_call_live() {
     let report = analyze_fixture("decorator_factory_callable_wrapper_object");
     let symbols = finding_symbols(&report);

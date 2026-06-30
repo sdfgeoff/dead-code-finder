@@ -1,0 +1,18 @@
+{
+  "roots": [{ "path": "src", "module": "" }],
+  "rootGroups": [
+    {
+      "name": "flows",
+      "entrypoints": ["src/*_flow.py"],
+      "countsAsUsed": true
+    }
+  ],
+  "rules": {
+    "decorators": [
+      {
+        "function": "prefect.flow",
+        "effect": "registerDecoratedFunction"
+      }
+    ]
+  }
+}

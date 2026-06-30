@@ -158,6 +158,13 @@ pub(super) fn resolve_reference(
     symbol_kinds: &HashMap<String, SymbolKind>,
     module_values: &HashSet<String>,
 ) -> Option<String> {
+    if !name.contains('.') {
+        let owner_local_symbol = format!("{owner}.{name}");
+        if symbol_kinds.contains_key(&owner_local_symbol) {
+            return Some(owner_local_symbol);
+        }
+    }
+
     if symbol_kinds.contains_key(name) {
         return Some(name.to_string());
     }
@@ -178,11 +185,6 @@ pub(super) fn resolve_reference(
             } => Some(format!("{module}.{name}")),
             _ => None,
         };
-    }
-
-    let owner_local_symbol = format!("{owner}.{name}");
-    if symbol_kinds.contains_key(&owner_local_symbol) {
-        return Some(owner_local_symbol);
     }
 
     let mut scope = owner;
